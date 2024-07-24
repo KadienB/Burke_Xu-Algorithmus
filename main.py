@@ -112,23 +112,32 @@ def burke_xu(
         
 
     # Ausführen des Algorithmus
+    for k in range(maxiter):
+        lhs, rhs = m.linear_equation_formulate(x, y, mu, sigma, M, 1, verbose=verbose)
+        lu, piv = m.linear_equation_factorize(lhs, overwritelhs=True, verbose=verbose)
+        x_delta = m.linear_equation_solve(lu, piv, rhs, overwriterhs=True, verbose=verbose)
+        y_delta = M @ x_delta
+        x, y, mu, step = m.predictor_step(x, y, x_delta, y_delta, mu, alpha1, beta, acc, verbose=verbose)
+        if step == 0:
+            if verbose:
+                print("Nullstep has been taken.")
+        elif step == 1:
+            if verbose:
+                print(f"{x} löst die KKT-Bedingungen des Quadratischen Programms.")
+            break
+        elif step == 2:
+            lhs, rhs = m.linear_equation_formulate(x, y, mu, sigma, M, 1, verbose=verbose)
+            lu, piv = m.linear_equation_factorize(lhs, overwritelhs=True, verbose=verbose)
+            x_delta = m.linear_equation_solve(lu, piv, rhs, overwriterhs=True, verbose=verbose)
+            y_delta = M @ x_delta
+        x, y, mu = m.corrector_step(x, y, x_delta, y_delta, mu, alpha2, beta, sigma, verbose=verbose)
+        k += 1
+        print(f"(x^k,y^k,mu_k) = ({x},{y},{mu})")
 
-    m.linear_equation_formulate(x, y, mu, sigma, M, 1, verbose)
 
     # Ausgabe des Ergebnisses
-    lhs, rhs = m.linear_equation_formulate(x, y, mu, sigma, M, 1, verbose)
-    delta_x = np.linalg.solve(lhs, rhs)
-    delta_y = M @ delta_x
-    if verbose:
-        print(f"delta_x = {delta_x} in |R^{len(delta_x)}")
-        print(f"delta_y = {delta_y} in |R^{len(delta_y)}")
-    x, y, mu, step = m.predictor_step(x, y, delta_x, delta_y, mu, alpha1, beta, acc, verbose)
-    if step == 1:
-        m.linear_equation_factorize(x, y, mu, lhs, 1, verbose)
-    elif step == 0:
-        test = 1
-    
         
+
     return
 
 
@@ -148,4 +157,4 @@ print(c)
 print(A)
 print(b)
 
-burke_xu(Q, c, A, b, maxiter=100, verbose=True, acc=1e-8)
+burke_xu(Q, c, A, b, maxiter=100, verbose=False, acc=1e-20)
