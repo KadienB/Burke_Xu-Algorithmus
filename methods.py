@@ -32,13 +32,14 @@ def big_phi(
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
+    verbose = False
     if verbose:
         print("Starting big_phi calculation...")
         print(f"a = {a}")
         print(f"b = {b}")
         print(f"mu = {mu}")
 
-    solution = a + b - np.sqrt((a - b) ** 2 + 4 * mu ** 2)
+    solution = (a + b) - np.sqrt(((a - b) ** 2) + (4 * (mu ** 2)))
 
     if verbose:
         print(f"big_phi result = {solution}")
@@ -75,6 +76,7 @@ def nabla_big_phi(
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
+    verbose = False
     if verbose:
         print(f"Starting nabla_big_phi calculation for argument {arg}...")
         print(f"a = {a}")
@@ -82,9 +84,9 @@ def nabla_big_phi(
         print(f"mu = {mu}")
 
     if arg == 1:
-        solution = 1 - (a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2)
+        solution = 1 - ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
     elif arg == 2:
-        solution = 1 + (a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2)
+        solution = 1 + ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
     elif arg == 3: 
         solution = (-4 * mu) / np.sqrt((a - b) ** 2 + 4 * mu ** 2)
     else: 
@@ -133,11 +135,32 @@ def linear_equation_formulate(
     if verbose:
         print(f"Starting linear_equation_factorize calculation for argument {arg}...")
 
+    if verbose:
+        if np.all(np.linalg.eigvalsh(np.diag(nabla_big_phi(x, y, mu, 1, verbose))) > 0):
+            print("Die Matrix D_x ist positiv definit.")
+        else:
+            print("Die Matrix D_x ist nicht positiv definit.")
+            print("x sah wie folgt aus:")
+            print(f"{x}")
+            print("y sah wie folgt aus:")
+            print(f"{y}")
+            print(f"und mu = {mu}")
+            for s in range (0, len(nabla_big_phi(x, y, mu, 1, verbose))):
+                if nabla_big_phi(x, y, mu, 1, verbose)[s] == 0:
+                    print(f"{nabla_big_phi(x, y, mu, 1, verbose)[s]} = 1 - ({x[s]} - {y[s]}) / {np.sqrt((x[s]-y[s])**2 + 4*mu**2)} in Zeile {s}")
+    if verbose:
+        if np.all(np.linalg.eigvalsh(np.diag(nabla_big_phi(x, y, mu, 2, verbose))) > 0):
+            print("Die Matrix D_y ist positiv definit.")
+        else:
+            print("Die Matrix D_y ist nicht positiv definit.")
+            np.set_printoptions(threshold=np.inf)
+            print(f"{np.diag(nabla_big_phi(x, y, mu, 2, verbose))}")
+
     lhs = np.diag(nabla_big_phi(x, y, mu, 1, verbose)) + np.diag(nabla_big_phi(x, y, mu, 2, verbose)) @ M
     if arg == 1:
         rhs = -1 * big_phi(x, y, mu, verbose) + mu * nabla_big_phi(x, y, mu, 3, verbose)
     elif arg == 2:
-        rhs = -1 * big_phi(x, y, mu, verbose) - mu * sigma * nabla_big_phi(x, y, mu, 3, verbose)
+        rhs = -1 * big_phi(x, y, mu, verbose) + (mu * sigma * nabla_big_phi(x, y, mu, 3, verbose))
     else: 
         raise ValueError("Argument must be 1 or 2.")
 
@@ -245,7 +268,7 @@ def predictor_step(
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
-
+    verbose = False
     if verbose:
         print(f"Starting predictor_step calculation...")
 
@@ -259,6 +282,8 @@ def predictor_step(
         step = 2
         s = 1
         while np.linalg.norm(big_phi(x + delta_x, y + delta_y, (alpha_1 ** s) * mu, verbose=verbose)) <= (alpha_1 ** s) * beta * mu:
+            if verbose:
+                print(f"erhöhe s um 1, {alpha_1 ** s} noch zu groß")
             s += 1
         x = x + delta_x
         y = y + delta_y
@@ -299,12 +324,14 @@ def corrector_step(
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
-
+    verbose = False
     if verbose:
         print(f"Starting corrector_step calculation...")
 
-    t = 2
+    t = 0
     while np.linalg.norm(big_phi(x + ((alpha_2 ** t) * delta_x), y + ((alpha_2 ** t) * delta_y), (1 - (sigma * (alpha_2 ** t))) * mu, verbose=verbose)) > (1 - (sigma * (alpha_2 ** t))) * beta * mu:
+        if verbose:
+                print(f"erhöhe t um 1 auf {t+1}, {(1 - (sigma * (alpha_2 ** t)))} noch zu groß")
         t += 1
 
     x = x + ((alpha_2 ** t) * delta_x)
