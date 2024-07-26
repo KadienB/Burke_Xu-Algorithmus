@@ -133,7 +133,7 @@ def linear_equation_formulate(
     """
 
     if verbose:
-        print(f"Starting linear_equation_factorize calculation for argument {arg}...")
+        print(f"Starting linear_equation_formulate calculation for argument {arg}...")
 
     if verbose:
         if np.all(np.linalg.eigvalsh(np.diag(nabla_big_phi(x, y, mu, 1, verbose))) > 0):
@@ -192,7 +192,7 @@ def linear_equation_factorize(
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
-
+    verbose = False
     if verbose:
         print(f"Starting linear_equation_factorize calculation...")
 
@@ -228,7 +228,7 @@ def linear_equation_solve(
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
-
+    verbose = False
     if verbose:
         print(f"Starting linear_equation_solve calculation...")
 
@@ -272,7 +272,7 @@ def predictor_step(
     if verbose:
         print(f"Starting predictor_step calculation...")
 
-    if np.linalg.norm(big_phi(x + delta_x, y + delta_y, 0, verbose=verbose)) < acc:
+    if np.linalg.norm(np.minimum(x,y)) < acc:
         step = 1
         x = x + delta_x
         y = y + delta_y
@@ -339,33 +339,3 @@ def corrector_step(
     mu = (1 - (sigma * (alpha_2 ** t))) * mu
 
     return x, y, mu
-
-def print_result(
-    x: np.ndarray,
-    y: np.ndarray,
-    mu: float,
-    M: Union[np.ndarray, spa.csc_matrix],
-    arg: int,
-    verbose: bool = False,    
-)   -> Optional[np.ndarray]:
-    r"""Beschreibung
-
-    Beschreibung
-
-    Parameters
-    ----------
-    a: 
-        in der Regel aktueller x-Vektor in |R^n.
-    b:
-        in der Regel aktueller y-Vektor in |R^n.
-    mu:
-        Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
-    verbose: bool
-        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
-    """
-
-    # code
-
-    return
