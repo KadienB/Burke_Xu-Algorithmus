@@ -73,7 +73,7 @@ def burke_xu(
     start_time = time.time()
 
     # Spezialfall: Lineares Programm
-    if Q is None and b is not None:
+    if Q is None and c is not None:
         Q = np.zeros((len(c), len(c)))
 
     # Umformung des QP mit Gleichungs-Restriktionen und Box-Restriktionen zu einem QP(Q,c,A,b) mit Ungleichungsrestriktionen.
@@ -145,8 +145,8 @@ def burke_xu(
         if verbose:
             print(f"Die Skalierungsmatrix S von {M} und {q} lautet:")
             print(S)
-            M_old = M
-            q_old = q
+        M_old = M
+        q_old = q
         M = S @ M
         q = S @ q
         del S
@@ -156,8 +156,8 @@ def burke_xu(
         if verbose:
             print(f"Die Skalierungsmatrix S von {M} und {q} lautet:")
             print(S)  
-            M_old = M
-            q_old = q
+        M_old = M
+        q_old = q
         M = S @ M
         q = S @ q
         del S
@@ -167,8 +167,8 @@ def burke_xu(
         if verbose:
             print(f"Die Skalierungsmatrix S von {M} und {q} lautet:")
             print(S)
-            M_old = M
-            q_old = q
+        M_old = M
+        q_old = q
         M = S @ M
         q = S @ q
         del S
@@ -198,7 +198,7 @@ def burke_xu(
 
     sigma = 0.5
     alpha1 = 0.75
-    alpha2 = 0.99
+    alpha2 = 0.9
 
     if verbose:
         print("Initialisiere Algorithmus...")
@@ -278,10 +278,10 @@ def burke_xu(
     print(f"Es wurden dafür {maxiter} Schritte durchgeführt. Es wurden {end_time - start_time} Sekunden benötigt.")
     print(f"Es wurde {nullstep} mal der Prediktor-Schritt abgelehnt.")
 
-    return qp_sol, qp_sol_y, qp_sol_smooth, maxiter, end_time - start_time, nullstep
+    return qp_sol, x, qp_sol_y, qp_sol_smooth, maxiter, end_time - start_time, nullstep
 
 
-test_case = 4
+test_case = 1
 
     # Testbeispiel laden und printen
 if test_case == 1: # Testbeispiele von QP-Benchmark mit verschiedenen Nebenbedingungen
@@ -307,7 +307,7 @@ if test_case == 1: # Testbeispiele von QP-Benchmark mit verschiedenen Nebenbedin
     init = np.ones(len(c) + len(b))
 
     # Algorithmus mit QPsolvern vergleichen
-    x_me = burke_xu(Q, c, A, b, maxiter=10000, verbose=True, acc=1e-6, scaling=0)
+    x_me = burke_xu(Q, c, A, b, maxiter=10000000, verbose=False, initvals=init, acc=1e-6, scaling=0)
     print("")
     lb_test = np.zeros(len(c))
     for solver in solvers:
@@ -335,6 +335,34 @@ elif test_case == 2: # Fathi [7]
         burke_xu(M, q, maxiter=1000, verbose=False, acc=1e-6, scaling=2)
         print(f"gelöst für n = {n}")
         n = 2 * n
+
+elif test_case == 2.5:
+    # Set the random seed for reproducibility
+    np.random.seed(0)
+
+    # Define the size of the matrices and vectors
+    n = 5  # You can change this value to generate different sizes
+
+    # Generate random matrix A with elements in the range (-5, 5)
+    A = np.random.uniform(-5, 5, (n, n))
+
+    # Generate random skew-symmetric matrix B
+    B = np.random.uniform(-5, 5, (n, n))
+    B = B - B.T  # Make B skew-symmetric
+
+    # Generate random vector q with elements in the range (-500, 500)
+    q = np.random.uniform(-500, 500, n)
+
+    # Generate random vector η with elements in the range (0.0, 0.3)
+    eta = np.random.uniform(0.0, 0.3, n)
+
+    # Define M using the formula M = A.T @ A + B + np.diag(η)
+    M = A.T @ A + B + np.diag(eta)
+
+    print(M)
+    print(q)
+
+    x = burke_xu(M, q, maxiter=1000, verbose=False, acc=1e-6, scaling=0)
 
 
 elif test_case == 3: # Kleines Quadratisches Programm
@@ -366,8 +394,8 @@ elif test_case == 3: # Kleines Quadratisches Programm
 
 elif test_case == 4: # Lineares Programm
 
-    n = 100
-    s = 30
+    n = 5
+    s = 3
     lb_test = np.zeros(n)
 
     # Generiere zufällige Zielfunktionskoeffizienten c
@@ -382,7 +410,7 @@ elif test_case == 4: # Lineares Programm
 
     Q = np.zeros((n,n))
 
-    x_me = burke_xu(c=c, A=A, b=b, maxiter=100, verbose=True, acc=1e-20, scaling=0)
+    x_me = burke_xu(c=c, A=A, b=b, maxiter=100, verbose=True, acc=1e-6, scaling=0)
     x_lp = linprog(c, A_ub=A, b_ub=b, bounds=(0, None))
     
     print(f"Meine Lösung lautet x = {x_me}")

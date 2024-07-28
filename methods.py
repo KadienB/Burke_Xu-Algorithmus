@@ -271,7 +271,7 @@ def predictor_step(
     if verbose:
         print(f"Starting predictor_step calculation...")
 
-    if np.linalg.norm(np.minimum(x,y)) < acc:
+    if np.linalg.norm(np.minimum(x + delta_x,y + delta_y)) < acc:
     # if np.linalg.norm(big_phi(x + delta_x, y + delta_y, 0)) < acc:
         step = 1
         x = x + delta_x
