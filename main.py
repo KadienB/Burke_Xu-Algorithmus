@@ -4,6 +4,7 @@ import numpy as np
 import qpbenchmark
 import scipy.io as spio
 import scipy.sparse as spa
+from scipy.optimize import linprog
 from qpbenchmark.benchmark import main
 from qpbenchmark.problem import Problem
 from qpsolvers import solve_qp
@@ -11,7 +12,7 @@ import methods as m
 import time
 
 def burke_xu(
-    Q: Union[np.ndarray, spa.csc_matrix] = None,
+    Q: Optional[Union[np.ndarray, spa.csc_matrix]] = None,
     c: np.ndarray = None,
     A: Optional[Union[np.ndarray, spa.csc_matrix]] = None,
     b: Optional[np.ndarray] = None,
@@ -71,6 +72,9 @@ def burke_xu(
     
     start_time = time.time()
 
+    # Spezialfall: Lineares Programm
+    if Q is None and b is not None:
+        Q = np.zeros((len(c), len(c)))
 
     # Umformung des QP mit Gleichungs-Restriktionen und Box-Restriktionen zu einem QP(Q,c,A,b) mit Ungleichungsrestriktionen.
     if A is None and b is not None:
@@ -114,10 +118,13 @@ def burke_xu(
 
     # Umformung von QP(Q,c,A,b) zu LCP(q,M).
     if verbose:
-        if np.all(np.linalg.eigvalsh(Q) >= 0):
-            print("Die Matrix Q ist positiv semidefinit. Damit sollte das auch M = [Q & -A^T \\ A & 0] sein (Für A = None folgt M = Q).")
-        else:
-            raise ValueError("Q muss positiv semidefinit sein.")
+        if np.array_equal(Q, Q.T) is True:
+            print("Die Matrix Q ist symmetrisch.")
+            if np.all(np.linalg.eigvalsh(Q) >= 0):
+                print("Die Matrix Q ist positiv semidefinit. Damit sollte das auch M = [Q & -A^T \\ A & 0] sein (Für A = None folgt M = Q).")
+            else:
+                raise ValueError("Q muss positiv semidefinit sein.")
+        else: raise ValueError("Q muss symmetrisch sein.")
     if A is None:
         M = Q
         q = c
@@ -145,7 +152,7 @@ def burke_xu(
         del S
 
     elif scaling == 2:
-        S = np.diag(1 / np.linalg.norm(M, axis=1))      
+        S = np.diag(np.array([1/np.linalg.norm(row) if np.linalg.norm(row) > acc else 1 for row in M]))      
         if verbose:
             print(f"Die Skalierungsmatrix S von {M} und {q} lautet:")
             print(S)  
@@ -156,7 +163,7 @@ def burke_xu(
         del S
 
     elif scaling == 3:
-        S = np.diag(np.array([1/q_i if np.absolute(q_i) > acc else 1 for q_i in q]))
+        S = np.diag(np.array([1/np.absolute(q_i) if np.absolute(q_i) > acc else 1 for q_i in q]))
         if verbose:
             print(f"Die Skalierungsmatrix S von {M} und {q} lautet:")
             print(S)
@@ -189,7 +196,7 @@ def burke_xu(
     if verbose:
         print(f"Anfangsbedingung {np.linalg.norm(m.big_phi(x, y, mu, verbose=verbose))} <= {beta * mu}")
 
-    sigma = 1e-4
+    sigma = 0.5
     alpha1 = 0.75
     alpha2 = 0.99
 
@@ -204,9 +211,8 @@ def burke_xu(
         print(f"alpha_1 = {alpha1}")
         print(f"alpha_2 = {alpha2}")
 
-    del q
 
-
+    nullstep = 0
     # Ausführen des Algorithmus
     for k in range(maxiter):
         lhs, rhs = m.linear_equation_formulate(x, y, mu, sigma, M, 1, verbose=verbose)
@@ -219,14 +225,13 @@ def burke_xu(
 
             if verbose:
                 print("Nullstep has been taken.")
-
+            nullstep += 1
             lhs, rhs = m.linear_equation_formulate(x, y, mu, sigma, M, 2, verbose=verbose)
             x_delta = m.linear_equation_solve(lu, piv, rhs, overwriterhs=True, verbose=verbose)
             # x_delta = np.linalg.solve(lhs, rhs)
             y_delta = M @ x_delta
         elif step == 1:
-            end_time = time.time()
-            count = k
+            maxiter = k + 1
             break
         elif step == 2:
             lhs, rhs = m.linear_equation_formulate(x, y, mu, sigma, M, 2, verbose=verbose)
@@ -239,11 +244,24 @@ def burke_xu(
         if verbose:
             print(f"(x^{k+1},y^{k+1},mu_{k+1}) = ({x},{y},{mu})")
 
+        del rhs
+        del lhs
+        del lu
+        del piv
+        del x_delta
+        del y_delta
 
     # Ausgabe des Ergebnisses
     
+    end_time = time.time()
+
     dim_qp = len(x) - dim_diff
     qp_sol = x[:dim_qp]
+    if scaling == 0:
+        qp_sol_y = M @ x + q
+    else:
+        qp_sol_y = M_old @ x + q_old
+    qp_sol_smooth = np.where(np.abs(qp_sol) < acc, 0, qp_sol)
 
     if verbose:
         print(f"Es wurde Skalierungsmethode {scaling} verwendet.")
@@ -252,46 +270,51 @@ def burke_xu(
         print(f"x in |R^{len(x)} =")
         print(x)
         print(f"y in |R^{len(y)} =")
-        print(y)
+        print(qp_sol_y)
 
     print(f"x in |R^{dim_qp} =")
-    print(np.round(qp_sol))
+    print(qp_sol)
     print(f"Der vorhergehende Vektor x löst das zugehörige Quadratische Programm, oder im Fall 'A == None' das zugehörige lineare Komplementaritätsproblem.")
-    print(f"Es wurden dafür {count} Schritte durchgeführt. Es wurden {end_time - start_time} Sekunden benötigt.")
+    print(f"Es wurden dafür {maxiter} Schritte durchgeführt. Es wurden {end_time - start_time} Sekunden benötigt.")
+    print(f"Es wurde {nullstep} mal der Prediktor-Schritt abgelehnt.")
 
-    return qp_sol
-
-
-
+    return qp_sol, qp_sol_y, qp_sol_smooth, maxiter, end_time - start_time, nullstep
 
 
-
-data=np.load("free_for_all_qpbenchmark-main/databackup/LIPMWALK0.npz",allow_pickle=True)
-data1=np.load("free_for_all_qpbenchmark-main/databackup/GNAR0.npz",allow_pickle=True)
-
-
-
-
-test_case = 3
+test_case = 4
 
     # Testbeispiel laden und printen
-if test_case == 1:
+if test_case == 1: # Testbeispiele von QP-Benchmark mit verschiedenen Nebenbedingungen
+
+    # Daten laden
+    data=np.load("free_for_all_qpbenchmark-main/databackup/LIPMWALK0.npz",allow_pickle=True)
+    # data=np.load("free_for_all_qpbenchmark-main/databackup/QUADCMPC1.npz",allow_pickle=True)
+
+    # Geladenes Problem printen
     lst = data.files
     for item in lst:
         print(item)
         print(data[item])
 
+    # Liste von Vergleichssolvern und Problem zu QP(Q,c,A,b) umwandeln
+    solvers = ['clarabel', 'cvxopt', 'daqp', 'ecos', 'highs', 'osqp', 'piqp', 'proxqp', 'qpalm', 'qpoases', 'quadprog', 'scs']
     Q = data['P']
     c = data['q']
     A = data['G']
     b = data['h']
 
-    print(Q)
-    print(c)
-    print(A)
-    print(b)
+    # Vektor für Warmstart festlegen
+    init = np.ones(len(c) + len(b))
 
-    burke_xu(Q, c, A, b, maxiter=100, verbose=True, acc=1e-6, scaling=1)
+    # Algorithmus mit QPsolvern vergleichen
+    x_me = burke_xu(Q, c, A, b, maxiter=10000, verbose=True, acc=1e-6, scaling=0)
+    print("")
+    lb_test = np.zeros(len(c))
+    for solver in solvers:
+        x = solve_qp(P=Q, q=c, G=A, h=b, lb=lb_test, ub=None, solver=solver)
+        print(x)
+        print("ist die Lösung von ", solver, ".")
+
 
 elif test_case == 2: # Fathi [7]
     n = 256
@@ -309,11 +332,12 @@ elif test_case == 2: # Fathi [7]
         print(M)
         print(f"q =")
         print(q)
-        burke_xu(M, q, maxiter=1000, verbose=False, acc=1e-6, scaling=1)
+        burke_xu(M, q, maxiter=1000, verbose=False, acc=1e-6, scaling=2)
         print(f"gelöst für n = {n}")
         n = 2 * n
 
-elif test_case == 3:
+
+elif test_case == 3: # Kleines Quadratisches Programm
 
     # Beispielwerte für Q, c, A und b als np.ndarray ohne buffer
     Q = np.ndarray(shape=(2, 2))
@@ -333,8 +357,33 @@ elif test_case == 3:
     print(A)
     print(b)
 
-    x_me = burke_xu(Q, c, A, b, maxiter=100, verbose=True, acc=1e-6, scaling=0)
+    x_me = burke_xu(Q, c, A, b, maxiter=100, verbose=True, acc=1e-6, scaling=3)
     x_qp = solve_qp(P=Q, q=c, G=A, h=b, solver="proxqp")
     
     print(f"Meine Lösung lautet x = {x_me}")
     print(f"proxqp ergab x = {x_qp}")
+
+
+elif test_case == 4: # Lineares Programm
+
+    n = 100
+    s = 30
+    lb_test = np.zeros(n)
+
+    # Generiere zufällige Zielfunktionskoeffizienten c
+    np.random.seed(0)  # Für Reproduzierbarkeit
+    c = np.random.rand(n)
+
+    # Generiere eine zufällige Matrix A
+    A = np.random.rand(s, n)
+
+    # Generiere einen zufälligen Vektor b
+    b = np.random.rand(s)
+
+    Q = np.zeros((n,n))
+
+    x_me = burke_xu(c=c, A=A, b=b, maxiter=100, verbose=True, acc=1e-20, scaling=0)
+    x_lp = linprog(c, A_ub=A, b_ub=b, bounds=(0, None))
+    
+    print(f"Meine Lösung lautet x = {x_me}")
+    print(f"scipy ergab x = {x_lp}")

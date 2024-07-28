@@ -153,7 +153,6 @@ def linear_equation_formulate(
             print("Die Matrix D_y ist positiv definit.")
         else:
             print("Die Matrix D_y ist nicht positiv definit.")
-            np.set_printoptions(threshold=np.inf)
             print(f"{np.diag(nabla_big_phi(x, y, mu, 2, verbose))}")
 
     lhs = np.diag(nabla_big_phi(x, y, mu, 1, verbose)) + np.diag(nabla_big_phi(x, y, mu, 2, verbose)) @ M
@@ -273,6 +272,7 @@ def predictor_step(
         print(f"Starting predictor_step calculation...")
 
     if np.linalg.norm(np.minimum(x,y)) < acc:
+    # if np.linalg.norm(big_phi(x + delta_x, y + delta_y, 0)) < acc:
         step = 1
         x = x + delta_x
         y = y + delta_y
