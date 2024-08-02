@@ -21,6 +21,7 @@ def big_phi(
 
     a + b - sqrt((a-b)^2 + 4mu^2).
 
+    
     Parameters
     ----------
     a: 
@@ -61,8 +62,9 @@ def nabla_big_phi(
 
     partial phi / partial mu = (-4mu) / sqrt((a - b)^2 + 4mu^2).
 
-    Gespeichert wird jeweils in Vektorform, da es sich um Diagonalmatrizen handelt.
+    Gespeichert wird jeweils in Vektorform, da es sich um vollbeschriebene Diagonalmatrizen handelt.
 
+    
     Parameters
     ----------
     a: 
@@ -96,6 +98,54 @@ def nabla_big_phi(
         print(f"nabla_big_phi result = {solution}")
 
     return solution
+
+def linear_equation_formulate_lhs(
+    x: np.ndarray,
+    s: np.ndarray,
+    l: Optional[np.ndarray],
+    mu: float,
+    sigma: float,
+    A: Union[np.ndarray, spa.csc_matrix],
+    arg1: int,
+    arg2: int,
+    verbose: bool = False,    
+)   -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    r"""Formulierung des zu lösenden LGS unter Berücksichtigung von Remarks 4 und 5 und unter Verwendung des Ansatzes des Schurkomplements für lineare Gleichungssysteme mit Blockmatrizen.
+
+    Es genügt also in jedem Schritt das LGS
+
+    (nabla_x(PHI) + nabla_y(PHI) @ M) @ delta_x = -PHI + mu * (sigma) * nabla_mu(PHI)
+
+    zu lösen.
+
+    
+    Parameters
+    ----------
+    x: 
+        in der Regel aktueller x-Vektor in |R^(n+m).
+    s:
+        in der Regel aktueller y-Vektor in |R^(n+m).
+    l:
+        in der Regel aktueller l-Vektor in |R^n.
+    mu:
+        Glättungsparameter.
+    sigma:
+        Zentrierungparameter.
+    A:
+        Matrix M von LCP(q,M) in |R^((n+m)x(n+m)).
+    arg:
+        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    arg2:
+        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    verbose: bool
+        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
+    """
+
+    return 
+
+# ----------------------------------------------------------------------------------------------------------------------------- #
+""" Ab hier die Methoden die für die Implementierung des Algorithmus für LCPs benutzt wurden und nicht mehr verwendet werden. """
+# ----------------------------------------------------------------------------------------------------------------------------- #
 
 def linear_equation_formulate(
     x: np.ndarray,
@@ -271,8 +321,8 @@ def predictor_step(
     if verbose:
         print(f"Starting predictor_step calculation...")
 
-    if np.linalg.norm(np.minimum(x + delta_x,y + delta_y)) < acc:
-    # if np.linalg.norm(big_phi(x + delta_x, y + delta_y, 0)) < acc:
+    # if np.linalg.norm(np.minimum(x + delta_x,y + delta_y)) < acc:
+    if np.linalg.norm(big_phi(x + delta_x, y + delta_y, 0)) < acc:
         step = 1
         x = x + delta_x
         y = y + delta_y

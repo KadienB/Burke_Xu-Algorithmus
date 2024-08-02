@@ -37,7 +37,7 @@ def burke_xu(
 
     Gx = h
 
-    lb <= x <= ub
+    0 <= x <= ub
 
 
     Parameters
@@ -57,7 +57,7 @@ def burke_xu(
     h :
         Vektor für Gleichungs-Restriktionen in |R^s.
     lb :
-        Untere Schranke für Box-Restriktionen in |R^n. Kann auch ``-np.inf`` sein.
+        Untere Schranke für Box-Restriktionen in |R_+^n.
     ub :
         Obere Schranke für Box-Restriktionen in |R^n. Kann auch ``+np.inf`` sein.
     maxiter :
@@ -69,9 +69,7 @@ def burke_xu(
     verbose :
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
         """
-    
     start_time = time.time()
-
     # Spezialfall: Lineares Programm
     if Q is None and c is not None:
         Q = np.zeros((len(c), len(c)))
@@ -188,7 +186,7 @@ def burke_xu(
     
 
     # Initialisierung
-    mu = np.linalg.norm(q) / len(q)
+    mu = (np.linalg.norm(q_old) ** 2) / len(q)
     beta = 2 * np.sqrt(len(q))
     while np.linalg.norm(m.big_phi(x, y, mu, verbose=verbose)) > beta * mu:
         beta = beta * 2
@@ -197,8 +195,8 @@ def burke_xu(
         print(f"Anfangsbedingung {np.linalg.norm(m.big_phi(x, y, mu, verbose=verbose))} <= {beta * mu}")
 
     sigma = 0.5
-    alpha1 = 0.75
-    alpha2 = 0.9
+    alpha1 = 0.9
+    alpha2 = 0.99
 
     if verbose:
         print("Initialisiere Algorithmus...")
@@ -215,6 +213,12 @@ def burke_xu(
     nullstep = 0
     # Ausführen des Algorithmus
     for k in range(maxiter):
+        print(f"-----------------------------------------------------------")
+        print(f"x^{k} = {x}")
+        print(f"y^{k} = {y}")
+        print(f"mu_{k} = {mu}")
+        print(f"-----------------------------------------------------------")
+
         lhs, rhs = m.linear_equation_formulate(x, y, mu, sigma, M, 1, verbose=verbose)
         lu, piv = m.linear_equation_factorize(lhs, overwritelhs=True, verbose=verbose)
         x_delta = m.linear_equation_solve(lu, piv, rhs, overwriterhs=True, verbose=verbose)
@@ -231,6 +235,11 @@ def burke_xu(
             # x_delta = np.linalg.solve(lhs, rhs)
             y_delta = M @ x_delta
         elif step == 1:
+            print(f"-----------------------------------------------------------")
+            print(f"x^{k + 1} = {x}")
+            print(f"y^{k + 1} = {y}")
+            print(f"mu_{k + 1} = {mu}")
+            print(f"-----------------------------------------------------------")
             maxiter = k + 1
             break
         elif step == 2:
@@ -241,15 +250,15 @@ def burke_xu(
             y_delta = M @ x_delta
         x, y, mu = m.corrector_step(x, y, x_delta, y_delta, mu, alpha2, beta, sigma, verbose=verbose)
 
-        if verbose:
-            print(f"(x^{k+1},y^{k+1},mu_{k+1}) = ({x},{y},{mu})")
+        # print(f"(x^{k+1},y^{k+1},mu_{k+1}) = ({x},{y},{mu})")
 
-        del rhs
-        del lhs
-        del lu
-        del piv
-        del x_delta
-        del y_delta
+
+    del rhs
+    del lhs
+    del lu
+    del piv
+    del x_delta
+    del y_delta
 
     # Ausgabe des Ergebnisses
     
@@ -262,6 +271,7 @@ def burke_xu(
     else:
         qp_sol_y = M_old @ x + q_old
     qp_sol_smooth = np.where(np.abs(qp_sol) < acc, 0, qp_sol)
+    qp_sol_y_smooth = np.where(np.abs(qp_sol_y) < acc, 0, qp_sol_y)
 
     if verbose:
         print(f"Es wurde Skalierungsmethode {scaling} verwendet.")
@@ -278,10 +288,10 @@ def burke_xu(
     print(f"Es wurden dafür {maxiter} Schritte durchgeführt. Es wurden {end_time - start_time} Sekunden benötigt.")
     print(f"Es wurde {nullstep} mal der Prediktor-Schritt abgelehnt.")
 
-    return qp_sol, x, qp_sol_y, qp_sol_smooth, maxiter, end_time - start_time, nullstep
+    return qp_sol, x, qp_sol_y, qp_sol_smooth, qp_sol_y_smooth, maxiter, end_time - start_time, nullstep
 
 
-test_case = 1
+test_case = 2
 
     # Testbeispiel laden und printen
 if test_case == 1: # Testbeispiele von QP-Benchmark mit verschiedenen Nebenbedingungen
@@ -307,8 +317,8 @@ if test_case == 1: # Testbeispiele von QP-Benchmark mit verschiedenen Nebenbedin
     init = np.ones(len(c) + len(b))
 
     # Algorithmus mit QPsolvern vergleichen
-    x_me = burke_xu(Q, c, A, b, maxiter=10000000, verbose=False, initvals=init, acc=1e-6, scaling=0)
-    print("")
+    x_me = burke_xu(Q, c, A, b, maxiter=10000000, verbose=False, acc=1e-6, scaling=3)
+    print(f"x_me[3] = {x_me[3]}")
     lb_test = np.zeros(len(c))
     for solver in solvers:
         x = solve_qp(P=Q, q=c, G=A, h=b, lb=lb_test, ub=None, solver=solver)
@@ -317,8 +327,8 @@ if test_case == 1: # Testbeispiele von QP-Benchmark mit verschiedenen Nebenbedin
 
 
 elif test_case == 2: # Fathi [7]
-    n = 256
-    n_max = 257
+    n = 2048
+    n_max = 2049
     while n < n_max:
         Mn = np.identity(n)
         for i in range(1,n):
