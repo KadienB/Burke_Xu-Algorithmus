@@ -7,10 +7,10 @@ from typing import Optional, Iterator, Union
 
 def burke_xu_lp(
     c: np.ndarray = None,
-    A: Optional[Union[np.ndarray, sp.sparse.csc_matrix]] = None,
-    b: Optional[np.ndarray] = None,
-    G: Optional[Union[np.ndarray, sp.sparse.csc_matrix]] = None,
-    h: Optional[np.ndarray] = None,
+    A_eq: Optional[Union[np.ndarray, sp.sparse.csc_matrix]] = None,
+    b_eq: Optional[np.ndarray] = None,
+    A_ineq: Optional[Union[np.ndarray, sp.sparse.csc_matrix]] = None,
+    b_ineq: Optional[np.ndarray] = None,
     lb: Optional[np.ndarray] = None,
     ub: Optional[np.ndarray] = None,
     maxiter: Optional[int] = 10000,
@@ -25,30 +25,30 @@ def burke_xu_lp(
 
         Die Linearen Programme sind dabei von der Form:
 
-        min f(x) = c^Tx 
+        min f(x) = c^T * x
 
         u.d.N.
 
-        Ax = b 
+        A_eq * x = b_eq
 
-        Gx <= h
+        A_ineq * x =< b_ineq
 
-        lb <= x <= ub
+        lb =< x =< ub
 
 
         Parameters
         ----------
         c :
             Vektor in |R^n.
-        A :
+        A_eq :
             Matrix für Gleichungs-Restriktionen in |R^(mxn).
             Kann als sparse Matrix angegeben werden.
-        b :
+        b_eq :
             Vektor für Gleichungs-Restriktionen in |R^m.
-        G :
+        A_ineq :
             Matrix für Ungleichungs-Restriktionen in |R^(sxn).
             Kann als sparse-Matrix angegeben werden.
-        h :
+        b_ineq :
             Vektor für Ungleichungs-Restriktionen in |R^s.
         lb :
             Untere Schranke für Box-Restriktionen in |R^n. Kann auch ``-np.inf`` sein.
@@ -68,35 +68,35 @@ def burke_xu_lp(
     """
 
 
-    """ Umformung des Linearen Programms in ein Lineares Programm in Normalform """
+    """ Presolving des linearen Programms """
 
-    # Ungleichungsrestriktionen zu Gleichungsrestriktionen
+    """ Lineares Programm auf Normalform bringen """
 
-    # Box-Restriktionen zu Gleichungsrestriktionen
-
+    A = A_eq
+    b = b_eq
 
     """ Initialisierung des Algorithmus """
 
-    # Eventuelle Erstellung der Skalierungsmatrizen
+    # Eventuelle Erstellung und Anwendung der Skalierungsmatrizen
     S0 = None
     S1 = None
     S2 = None
 
     # Startwerte der Iterationsvariablen
-    x = np.linalg.inv(A) @ b
+    x = np.linalg.pinv(A) @ b
     l = np.zeros(A.shape[1])
     s = c
     if verbose:
         print(f"Ax - b = {A @ x - b}")
         print(f"A^T*lambda + s - c = {A.T @ l + s - c}")
 
-    mu = 1000000
+    mu = 10
     if np.linalg.norm(mt.big_phi(x, s, 0)) < acc:
         print(f"initval was solution")
         maxiter = 0
 
-    # Festsetzung der Stellschrauben
-    beta = 1000
+    # Externe Variablen
+    beta = 100000
     while np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose)) > beta * mu:
         beta = beta * 2
     sigma = 0.5
@@ -128,7 +128,7 @@ def burke_xu_lp(
         cholesky, low = sp.linalg.cho_factor(lhs)
         delta_l = sp.linalg.cho_solve((cholesky, low), rhs)
         delta_s = -1 * A.T @ delta_l
-        delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 2, inv=True, verbose=verbose)) @ delta_s) + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose))
+        delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         x, l, s, mu, step = mt.predictor_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_1, beta, acc, verbose=verbose)
 
         # Korrektor-Schritt
@@ -145,11 +145,11 @@ def burke_xu_lp(
             rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem=1, steptype=2, verbose=verbose)
             delta_l = sp.linalg.cho_solve((cholesky, low), rhs)
             delta_s = -1 * A.T @ delta_l
-            delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 2, inv=True, verbose=verbose)) @ delta_s) + (mt.big_phi(x, s, mu, verbose)) + (- 1 * mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose))
+            delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         elif step == 1:
             print(f"-----------------------------------------------------------")
             print(f"x^{k + 1} = {x}")
-            print(f"s^{k + 1} = {y}")
+            print(f"s^{k + 1} = {s}")
             print(f"mu_{k + 1} = {mu}")
             print(f"-----------------------------------------------------------")
             maxiter = k + 1
@@ -160,7 +160,7 @@ def burke_xu_lp(
             cholesky, low = sp.linalg.cho_factor(lhs)
             delta_l = sp.linalg.cho_solve((cholesky, low), rhs)
             delta_s = -1 * A.T @ delta_l
-            delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 2, inv=True, verbose=verbose)) @ delta_s) + (mt.big_phi(x, s, mu, verbose)) + (- 1 * mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose))
+            delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         x, l, s, mu = mt.corrector_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_2, beta, sigma, verbose=verbose)
 
 
@@ -210,7 +210,7 @@ b_eq = np.array([2, 3])
 # Lösen des linearen Programms
 result = sp.optimize.linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), method='highs')
 
-my_result = burke_xu_lp(c = c, A = A_eq, b = b_eq, maxiter=25, acc=1e-8, verbose=True)
+my_result = burke_xu_lp(c = c, A_eq = A_eq, b_eq = b_eq, maxiter=25, acc=1e-4, verbose=True)
 print(f"my_result = {my_result}")
 
 # Ausgabe der Ergebnisse

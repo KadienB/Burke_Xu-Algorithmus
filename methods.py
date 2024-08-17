@@ -1,13 +1,10 @@
 import os
 from typing import Optional, Iterator, Union, Tuple
 import numpy as np
-import qpbenchmark
 import scipy.io as spio
 import scipy.sparse as spa
 from scipy.linalg import lu_factor, lu_solve
-from qpbenchmark.benchmark import main
-from qpbenchmark.problem import Problem
-from qpsolvers import solve_qp
+import sksparse as sparse
 
 def big_phi(
     a: np.ndarray,
@@ -87,7 +84,11 @@ def nabla_big_phi(
         print(f"mu = {mu}")
 
     if arg == 1:
-        solution = 1 - ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
+        if inv == False:
+            solution = 1 - ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
+        else:
+            sqrt_term = np.sqrt((a**2) - (2 * a * b) + (b**2) + (4 * mu**2))
+            solution = sqrt_term / ((- a + b) + sqrt_term)
     elif arg == 2:
         if inv == False:
             solution = 1 + ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
@@ -137,10 +138,10 @@ def linear_equation_formulate_lhs(
 
     if problem == 1:
         # Vorerst instabil
-        D_s_inv = nabla_big_phi(x, a, mu, 2, inv=True, verbose=verbose)
+        D_s = nabla_big_phi(x, a, mu, 2, verbose=verbose)
         # vorerst instabil 
-        D_x = nabla_big_phi(x, a, mu, 1, verbose=verbose)
-        lhs = A @ np.diag(D_s_inv) @ np.diag(D_x) @ A.T
+        D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
+        lhs = A @ np.diag(D_x_inv) @ np.diag(D_s) @ A.T
 
 
     if verbose:
@@ -184,13 +185,12 @@ def linear_equation_formulate_rhs(
 
     if problem == 1:
         # Vorerst instabil
-        D_s = nabla_big_phi(x, a, mu, 2, verbose)
-        D_s_inv = 1 / D_s
+        D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
         # vorerst instabil
         if steptype == 1:
-            rhs = A @ np.diag(D_s_inv) @ ((big_phi(x, a, mu, verbose)) + (-1 * mu * nabla_big_phi(x, a, mu, 3, verbose)))
+            rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) + (-1 * mu * nabla_big_phi(x, a, mu, 3, verbose)))
         elif steptype == 2:
-            rhs = A @ np.diag(D_s_inv) @ ((big_phi(x, a, mu, verbose)) + (- 1 * mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
+            rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) + (- 1 * mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
         else:
             raise ValueError("Steptype must be 1 or 2.")
 
@@ -316,6 +316,140 @@ def corrector_step(
         return x, b, a, mu
 
     return x, a, mu
+
+def lp_to_standardform(
+    c: np.ndarray,
+    A_eq: Optional[Union[np.ndarray, spa.csc_matrix]] = None,
+    b_eq: Optional[np.ndarray] = None,
+    A_ineq: Optional[Union[np.ndarray, spa.csc_matrix]] = None,
+    b_ineq: Optional[np.ndarray] = None,
+    lb: Optional[np.ndarray] = None,
+    up: Optional[np.ndarray] = None,
+    verbose: bool = False,    
+)   -> Optional[np.ndarray]:
+    r"""Beschreibung
+
+    Beschreibung
+
+    Parameters
+    ----------
+    a: 
+        in der Regel aktueller x-Vektor in |R^n.
+    b:
+        in der Regel aktueller y-Vektor in |R^n.
+    mu:
+        Glättungsparameter.
+    arg:
+        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    verbose: bool
+        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
+    """
+    
+    if verbose:
+        print(f"Starting lp_to_standardform calculation...")
+
+
+
+    return A_std, b_std, c_std
+
+def presolve_lp(
+    A_std: Union[np.ndarray, spa.csc_matrix],
+    b_std: np.ndarray,
+    c_std: np.ndarray,
+    verbose: bool = False,    
+)   -> Optional[np.ndarray]:
+    r"""Beschreibung
+
+    Beschreibung
+
+    Parameters
+    ----------
+    a: 
+        in der Regel aktueller x-Vektor in |R^n.
+    b:
+        in der Regel aktueller y-Vektor in |R^n.
+    mu:
+        Glättungsparameter.
+    arg:
+        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    verbose: bool
+        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
+    """
+    
+    if verbose:
+        print(f"Starting presolve_lp calculation...")
+
+    return A_std, b_std, c_std
+
+def linear_equation_factorize(
+    A: Union[np.ndarray, spa.csc_matrix],
+    overwritelhs: bool = False,
+    verbose: bool = False,    
+)   -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    r"""Beschreibung
+
+    Beschreibung
+
+    Parameters
+    ----------
+    a: 
+        in der Regel aktueller x-Vektor in |R^n.
+    b:
+        in der Regel aktueller y-Vektor in |R^n.
+    mu:
+        Glättungsparameter.
+    arg:
+        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    verbose: bool
+        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
+    """
+    verbose = False
+    if verbose:
+        print(f"Starting linear_equation_factorize calculation...")
+
+    lu, piv = lu_factor(lhs, overwrite_a=overwritelhs)
+
+    if verbose:
+        print("Die Faktorisierung hat die Form:")
+        print(f"{lu}")
+
+    return lu, piv
+
+def linear_equation_solve(
+    lu: Union[np.ndarray, spa.csc_matrix],
+    piv: np.ndarray,
+    rhs: np.ndarray,
+    overwriterhs: bool = False,
+    verbose: bool = False,    
+)   -> Optional[np.ndarray]:
+    r"""Beschreibung
+
+    Beschreibung
+
+    Parameters
+    ----------
+    a: 
+        in der Regel aktueller x-Vektor in |R^n.
+    b:
+        in der Regel aktueller y-Vektor in |R^n.
+    mu:
+        Glättungsparameter.
+    arg:
+        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    verbose: bool
+        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
+    """
+    verbose = False
+    if verbose:
+        print(f"Starting linear_equation_solve calculation...")
+
+    x = lu_solve((lu, piv), rhs, overwrite_b=overwriterhs)
+
+    if verbose:
+        print("Die Lösung x_delta lautet:")
+        print(x)
+
+    return x
 
 # ----------------------------------------------------------------------------------------------------------------------------- #
 """ Ab hier die Methoden die für die Implementierung des Algorithmus für LCPs benutzt wurden und nicht mehr verwendet werden. """
