@@ -1,13 +1,9 @@
 import os
 from typing import Optional, Iterator, Union
 import numpy as np
-import qpbenchmark
 import scipy.io as spio
 import scipy.sparse as spa
 from scipy.optimize import linprog
-from qpbenchmark.benchmark import main
-from qpbenchmark.problem import Problem
-from qpsolvers import solve_qp
 import methods as m
 import time
 
@@ -396,7 +392,6 @@ elif test_case == 3: # Kleines Quadratisches Programm
     print(b)
 
     x_me = burke_xu(Q, c, A, b, maxiter=100, verbose=True, acc=1e-6, scaling=3)
-    x_qp = solve_qp(P=Q, q=c, G=A, h=b, solver="proxqp")
     
     print(f"Meine Lösung lautet x = {x_me}")
     print(f"proxqp ergab x = {x_qp}")

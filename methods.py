@@ -348,7 +348,9 @@ def lp_to_standardform(
     if verbose:
         print(f"Starting lp_to_standardform calculation...")
 
-
+    A_std = None
+    b_std = None
+    c_std = None
 
     return A_std, b_std, c_std
 
