@@ -197,23 +197,45 @@ def burke_xu_lp(
 
     return x
 
-# Koeffizienten der Zielfunktion
-c = np.array([-1, -2])
+test_case = 2
 
-# Koeffizientenmatrix der Gleichungsnebenbedingungen (linke Seite)
-A_eq = np.array([[1, 1],
-                 [1, 2]])
+if test_case == 1:
 
-# Rechte Seite der Gleichungsnebenbedingungen
-b_eq = np.array([2, 3])
+    # Koeffizienten der Zielfunktion
+    c = np.array([-1, -2])
 
-# Lösen des linearen Programms
-result = sp.optimize.linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), method='highs')
+    # Koeffizientenmatrix der Gleichungsnebenbedingungen (linke Seite)
+    A_eq = np.array([[1, 1],
+                    [1, 2]])
 
-my_result = burke_xu_lp(c = c, A_eq = A_eq, b_eq = b_eq, maxiter=25, acc=1e-4, verbose=True)
-print(f"my_result = {my_result}")
+    # Rechte Seite der Gleichungsnebenbedingungen
+    b_eq = np.array([2, 3])
 
-# Ausgabe der Ergebnisse
-print("Lösungsstatus:", result.message)
-print("Optimale Lösung x:", result.x)
-print("Optimaler Zielfunktionswert:", result.fun)
+    # Lösen des linearen Programms
+    result = sp.optimize.linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), method='highs')
+
+    my_result = burke_xu_lp(c = c, A_eq = A_eq, b_eq = b_eq, maxiter=25, acc=1e-4, verbose=True)
+    print(f"my_result = {my_result}")
+
+    # Ausgabe der Ergebnisse
+    print("Lösungsstatus:", result.message)
+    print("Optimale Lösung x:", result.x)
+    print("Optimaler Zielfunktionswert:", result.fun)
+
+if test_case == 2:
+
+    c = np.array([1, 2, 3])
+    A_eq = np.array([[1, 2, 3]])
+    b_eq = np.array([7])
+    A_ineq = np.array([[2, 2, -1], [-1, 1, 0]])
+    b_ineq = np.array([10, -3])
+    lb = np.array([-1, -np.inf, -3])
+    up = np.array([5, 7, np.inf])
+
+    A, b, c, indices, sol_length = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, lb=lb, up=up, verbose=True)
+
+    print(f"A = {A}")
+    print(f"b = {b}")
+    print(f"c = {c}")
+    print(f"indices = {indices}")
+    print(f"sol_length = {sol_length}")

@@ -325,22 +325,29 @@ def lp_to_standardform(
     b_ineq: Optional[np.ndarray] = None,
     lb: Optional[np.ndarray] = None,
     up: Optional[np.ndarray] = None,
-    verbose: bool = False,    
+    verbose: bool = False,
 )   -> Optional[np.ndarray]:
     r"""Beschreibung
 
-    Beschreibung
-
     Parameters
     ----------
-    a: 
-        in der Regel aktueller x-Vektor in |R^n.
-    b:
-        in der Regel aktueller y-Vektor in |R^n.
-    mu:
-        Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    c :
+        Vektor in |R^n.
+    A_eq :
+        Matrix für Gleichungs-Restriktionen in |R^(mxn).
+        Kann als sparse Matrix angegeben werden.
+    b_eq :
+        Vektor für Gleichungs-Restriktionen in |R^m.
+    A_ineq :
+        Matrix für Ungleichungs-Restriktionen in |R^(sxn).
+        Kann als sparse-Matrix angegeben werden.
+    b_ineq :
+        Vektor für Ungleichungs-Restriktionen in |R^s.
+    lb :
+        Untere Schranke für Box-Restriktionen in |R^n. Kann auch ``-np.inf`` sein.
+        Wird nichts angegeben, wird ``0`` als untere Schranke verwendet.
+    ub :
+        Obere Schranke für Box-Restriktionen in |R^n. Kann auch ``+np.inf`` sein.
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
@@ -348,11 +355,36 @@ def lp_to_standardform(
     if verbose:
         print(f"Starting lp_to_standardform calculation...")
 
-    A_std = None
-    b_std = None
-    c_std = None
+    # Bestimmen, ob die Ausgabe als sparse matrix (csc) formatiert sein soll
+    use_sparse = isinstance(A_eq, spa.csc_matrix) or isinstance(A_ineq, spa.csc_matrix)
 
-    return A_std, b_std, c_std
+    # Anzahl der Variablen
+    initial_length = len(c)
+    num_vars = initial_length
+
+
+    """ Hinzufügen der Equality Constraints """
+
+    # Initialisierung von A_std, b_std und c_std
+    if A_eq is not None:
+        A_std = A_eq
+        b_std = b_eq
+    else:
+        A_std = np.empty((0, num_vars))
+        b_std = np.empty(0)
+    c_std = c
+
+
+    """ Hinzufügen der Inequality Constraints """
+
+
+
+    """ Hinzufügen der Box Constraints """
+
+    # Liste für Transformationen
+    split_indices = []
+
+    return A_std, b_std, c_std, split_indices, initial_length
 
 def presolve_lp(
     A_std: Union[np.ndarray, spa.csc_matrix],
@@ -409,13 +441,12 @@ def linear_equation_factorize(
     if verbose:
         print(f"Starting linear_equation_factorize calculation...")
 
-    lu, piv = lu_factor(lhs, overwrite_a=overwritelhs)
 
     if verbose:
         print("Die Faktorisierung hat die Form:")
         print(f"{lu}")
 
-    return lu, piv
+    return None
 
 def linear_equation_solve(
     lu: Union[np.ndarray, spa.csc_matrix],
