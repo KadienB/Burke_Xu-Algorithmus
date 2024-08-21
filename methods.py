@@ -1,10 +1,10 @@
 import os
 from typing import Optional, Iterator, Union, Tuple
 import numpy as np
-import scipy.io as spio
+import scipy as sp
 import scipy.sparse as spa
 from scipy.linalg import lu_factor, lu_solve
-import sksparse as sparse
+import sksparse as skit
 
 def big_phi(
     a: np.ndarray,
@@ -356,7 +356,9 @@ def lp_to_standardform(
         print(f"Starting lp_to_standardform calculation...")
 
     # Bestimmen, ob die Ausgabe als sparse matrix (csc) formatiert sein soll
-    use_sparse = isinstance(A_eq, spa.csc_matrix) or isinstance(A_ineq, spa.csc_matrix)
+    use_sparse = isinstance(A_eq, spa.csc_matrix) and isinstance(A_ineq, spa.csc_matrix)
+    if use_sparse is False and (isinstance(A_eq, spa.csc_matrix) or isinstance(A_ineq, spa.csc_matrix)):
+        raise ValueError("One Input Matrix is 'csc', while the other one is an np.array.")
 
     # Anzahl der Variablen
     initial_length = len(c)
@@ -369,14 +371,25 @@ def lp_to_standardform(
     if A_eq is not None:
         A_std = A_eq
         b_std = b_eq
-    else:
-        A_std = np.empty((0, num_vars))
-        b_std = np.empty(0)
     c_std = c
 
 
-    """ Hinzufügen der Inequality Constraints """
+    """ Hinzufügen der Equality und Inequality Constraints """
 
+    if A_ineq is not None:
+        c_std = np.hstack((c_std, np.zeros(A_ineq.shape[0])))
+        # Blockmatrix erstellen
+        if use_sparse is False:
+            if A_std is not None:
+                A_eq_block = np.hstack([A_std, np.zeros((A_std.shape[0], A_ineq.shape[0]))])
+                A_ineq_block = np.hstack([A_ineq, np.eye(A_ineq.shape[0], A_ineq.shape[0])])
+                A_std = np.vstack([A_eq_block, A_ineq_block])
+                b_std = np.hstack([b_std, b_ineq])
+            else:
+                A_std = np.hstack([A_ineq, np.eye(A_ineq.shape[0], A_ineq.shape[0])])
+                b_std = b_ineq
+
+        # Sparse Blockmatrix erstellen
 
 
     """ Hinzufügen der Box Constraints """

@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import scipy as sp
+import scipy.sparse as spa
 import methods as mt
 import time
 from typing import Optional, Iterator, Union
@@ -231,6 +232,14 @@ if test_case == 2:
     b_ineq = np.array([10, -3])
     lb = np.array([-1, -np.inf, -3])
     up = np.array([5, 7, np.inf])
+
+    print(f"A_eq = {A_eq}")
+    print(f"b_eq = {b_eq}")
+    print(f"A_ineq = {A_ineq}")
+    print(f"b_ineq = {b_ineq}")
+    print(f"lb = {lb}")
+    print(f"up = {up}")
+    print(f"c = {c}")
 
     A, b, c, indices, sol_length = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, lb=lb, up=up, verbose=True)
 
