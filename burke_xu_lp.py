@@ -236,15 +236,19 @@ if test_case == 2:
     print(f"A_eq = {A_eq}")
     print(f"b_eq = {b_eq}")
     print(f"A_ineq = {A_ineq}")
-    print(f"b_ineq = {b_ineq}")
+    print(f"b_ineq = {b_ineq} len(b_ineq) = {len(b_ineq)}")
     print(f"lb = {lb}")
     print(f"up = {up}")
     print(f"c = {c}")
 
-    A, b, c, indices, sol_length = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, lb=lb, up=up, verbose=True)
+    A_eq = spa.csc_matrix(A_eq)
+    A_ineq = spa.csc_matrix(A_ineq)
+
+    A, b, c, indices, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, lb=lb, up=up, verbose=True)
 
     print(f"A = {A}")
-    print(f"b = {b}")
+    print(f"b = {b} len(b) = {len(b)}")
     print(f"c = {c}")
     print(f"indices = {indices}")
     print(f"sol_length = {sol_length}")
+    print(f"use_sparse = {use_sparse}")

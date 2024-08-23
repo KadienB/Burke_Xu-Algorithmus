@@ -356,8 +356,15 @@ def lp_to_standardform(
         print(f"Starting lp_to_standardform calculation...")
 
     # Bestimmen, ob die Ausgabe als sparse matrix (csc) formatiert sein soll
-    use_sparse = isinstance(A_eq, spa.csc_matrix) and isinstance(A_ineq, spa.csc_matrix)
-    if use_sparse is False and (isinstance(A_eq, spa.csc_matrix) or isinstance(A_ineq, spa.csc_matrix)):
+    if isinstance(A_eq, spa.csc_matrix) == isinstance(A_ineq, spa.csc_matrix):
+        use_sparse = isinstance(A_eq, spa.csc_matrix)
+    elif A_eq is None and A_ineq is not None:
+        use_sparse = isinstance(A_ineq, spa.csc_matrix)
+    elif A_ineq is None and A_eq is not None:
+        use_sparse = isinstance(A_eq, spa.csc_matrix)
+    elif A_eq is None and A_ineq is None:
+        use_sparse = True
+    else:
         raise ValueError("One Input Matrix is 'csc', while the other one is an np.array.")
 
     # Anzahl der Variablen
@@ -371,6 +378,13 @@ def lp_to_standardform(
     if A_eq is not None:
         A_std = A_eq
         b_std = b_eq
+    else:
+        if use_sparse is False:
+            A_std = np.empty((0, c.size))
+            b_std = np.empty(0)
+        else:
+            A_std = spa.csc_matrix((0, c.size)) 
+            b_std = np.empty(0)
     c_std = c
 
 
@@ -380,16 +394,17 @@ def lp_to_standardform(
         c_std = np.hstack((c_std, np.zeros(A_ineq.shape[0])))
         # Blockmatrix erstellen
         if use_sparse is False:
-            if A_std is not None:
-                A_eq_block = np.hstack([A_std, np.zeros((A_std.shape[0], A_ineq.shape[0]))])
-                A_ineq_block = np.hstack([A_ineq, np.eye(A_ineq.shape[0], A_ineq.shape[0])])
-                A_std = np.vstack([A_eq_block, A_ineq_block])
-                b_std = np.hstack([b_std, b_ineq])
-            else:
-                A_std = np.hstack([A_ineq, np.eye(A_ineq.shape[0], A_ineq.shape[0])])
-                b_std = b_ineq
+            A_eq_block = np.hstack([A_std, np.zeros((A_std.shape[0], A_ineq.shape[0]))])
+            A_ineq_block = np.hstack([A_ineq, np.eye(A_ineq.shape[0], A_ineq.shape[0])])
+            A_std = np.vstack([A_eq_block, A_ineq_block])
+            b_std = np.hstack([b_std, b_ineq])
 
         # Sparse Blockmatrix erstellen
+        else:
+            A_eq_block = spa.hstack([A_std, spa.csc_matrix((A_std.shape[0], A_ineq.shape[0]))])
+            A_ineq_block = spa.hstack([A_ineq, spa.eye(A_ineq.shape[0], A_ineq.shape[0])])
+            A_std = spa.vstack([A_eq_block, A_ineq_block])
+            b_std = np.hstack([b_std, b_ineq])
 
 
     """ Hinzufügen der Box Constraints """
@@ -397,7 +412,7 @@ def lp_to_standardform(
     # Liste für Transformationen
     split_indices = []
 
-    return A_std, b_std, c_std, split_indices, initial_length
+    return A_std, b_std, c_std, split_indices, initial_length, use_sparse
 
 def presolve_lp(
     A_std: Union[np.ndarray, spa.csc_matrix],
