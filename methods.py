@@ -3,7 +3,6 @@ from typing import Optional, Iterator, Union, Tuple
 import numpy as np
 import scipy as sp
 import scipy.sparse as spa
-from scipy.linalg import lu_factor, lu_solve
 import sksparse as skit
 
 def big_phi(
@@ -323,8 +322,7 @@ def lp_to_standardform(
     b_eq: Optional[np.ndarray] = None,
     A_ineq: Optional[Union[np.ndarray, spa.csc_matrix]] = None,
     b_ineq: Optional[np.ndarray] = None,
-    lb: Optional[np.ndarray] = None,
-    up: Optional[np.ndarray] = None,
+    bounds: Optional[np.ndarray] = None,
     verbose: bool = False,
 )   -> Optional[np.ndarray]:
     r"""Beschreibung
@@ -343,11 +341,15 @@ def lp_to_standardform(
         Kann als sparse-Matrix angegeben werden.
     b_ineq :
         Vektor für Ungleichungs-Restriktionen in |R^s.
-    lb :
-        Untere Schranke für Box-Restriktionen in |R^n. Kann auch ``-np.inf`` sein.
-        Wird nichts angegeben, wird ``0`` als untere Schranke verwendet.
-    ub :
-        Obere Schranke für Box-Restriktionen in |R^n. Kann auch ``+np.inf`` sein.
+    Bounds :
+        Matrix in |R^(nx2) für Box-Restriktionen.
+        Die linke Spalte enthält lb (lower bounds), die rechte Spalte ub (upper bounds). Die Zeile entspricht dem Index von x.
+            lb :
+                Untere Schranke für Box-Restriktionen in |R^n. Kann auch ``None`` sein, in dem Fall wird ``-np.inf`` als untere Schranke verwendet und x ist in diesem Index unbeschränkt nach unten.
+                Wird lb nicht angegeben, wird ``0`` als untere Schranke verwendet.
+            ub :
+                Obere Schranke für Box-Restriktionen in |R^n. Kann auch ``None`` sein, in dem Fall wird ``np.inf`` als obere Schranke verwendet und x ist in diesem Index unbeschränkt nach oben.
+                Wird ub nicht angegeben, wird ``np.inf`` als obere Schranke verwendet.
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
@@ -410,9 +412,9 @@ def lp_to_standardform(
     """ Hinzufügen der Box Constraints """
 
     # Liste für Transformationen
-    split_indices = []
+    transformations = []
 
-    return A_std, b_std, c_std, split_indices, initial_length, use_sparse
+    return A_std, b_std, c_std, transformations, initial_length, use_sparse
 
 def presolve_lp(
     A_std: Union[np.ndarray, spa.csc_matrix],
@@ -504,13 +506,13 @@ def linear_equation_solve(
     if verbose:
         print(f"Starting linear_equation_solve calculation...")
 
-    x = lu_solve((lu, piv), rhs, overwrite_b=overwriterhs)
+    # x = lu_solve((lu, piv), rhs, overwrite_b=overwriterhs)
 
     if verbose:
         print("Die Lösung x_delta lautet:")
         print(x)
 
-    return x
+    return # x
 
 # ----------------------------------------------------------------------------------------------------------------------------- #
 """ Ab hier die Methoden die für die Implementierung des Algorithmus für LCPs benutzt wurden und nicht mehr verwendet werden. """
@@ -616,13 +618,13 @@ def linear_equation_factorize(
     if verbose:
         print(f"Starting linear_equation_factorize calculation...")
 
-    lu, piv = lu_factor(lhs, overwrite_a=overwritelhs)
+    # lu, piv = lu_factor(lhs, overwrite_a=overwritelhs)
 
     if verbose:
         print("Die Faktorisierung hat die Form:")
         print(f"{lu}")
 
-    return lu, piv
+    return # lu, piv
 
 def linear_equation_solve(
     lu: Union[np.ndarray, spa.csc_matrix],
@@ -652,11 +654,11 @@ def linear_equation_solve(
     if verbose:
         print(f"Starting linear_equation_solve calculation...")
 
-    x = lu_solve((lu, piv), rhs, overwrite_b=overwriterhs)
+    # x = lu_solve((lu, piv), rhs, overwrite_b=overwriterhs)
 
     if verbose:
         print("Die Lösung x_delta lautet:")
         print(x)
 
-    return x
+    return # x
 

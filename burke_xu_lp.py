@@ -12,8 +12,7 @@ def burke_xu_lp(
     b_eq: Optional[np.ndarray] = None,
     A_ineq: Optional[Union[np.ndarray, sp.sparse.csc_matrix]] = None,
     b_ineq: Optional[np.ndarray] = None,
-    lb: Optional[np.ndarray] = None,
-    ub: Optional[np.ndarray] = None,
+    bounds: Optional[np.ndarray] = None,
     maxiter: Optional[int] = 10000,
     acc: Optional[float] = 1e-8,
     scaling: Optional[int] = 0,
@@ -51,11 +50,15 @@ def burke_xu_lp(
             Kann als sparse-Matrix angegeben werden.
         b_ineq :
             Vektor für Ungleichungs-Restriktionen in |R^s.
-        lb :
-            Untere Schranke für Box-Restriktionen in |R^n. Kann auch ``-np.inf`` sein.
-            Wird nichts angegeben, wird ``0`` als untere Schranke verwendet.
-        ub :
-            Obere Schranke für Box-Restriktionen in |R^n. Kann auch ``+np.inf`` sein.
+        Bounds :
+            Matrix in |R^(nx2) für Box-Restriktionen.
+            Die linke Spalte enthält lb (lower bounds), die rechte Spalte ub (upper bounds). Die Zeile entspricht dem Index von x.
+                lb :
+                    Untere Schranke für Box-Restriktionen in |R^n. Kann auch ``None`` sein, in dem Fall wird ``-np.inf`` als untere Schranke verwendet und x ist in diesem Index unbeschränkt nach unten.
+                    Wird lb nicht angegeben, wird ``0`` als untere Schranke verwendet.
+                ub :
+                    Obere Schranke für Box-Restriktionen in |R^n. Kann auch ``None`` sein, in dem Fall wird ``np.inf`` als obere Schranke verwendet und x ist in diesem Index unbeschränkt nach oben.
+                    Wird ub nicht angegeben, wird ``np.inf`` als obere Schranke verwendet.
         maxiter :
             Maximum Anzahl an Iterationen.
         acc :

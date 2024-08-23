@@ -316,10 +316,10 @@ if test_case == 1: # Testbeispiele von QP-Benchmark mit verschiedenen Nebenbedin
     x_me = burke_xu(Q, c, A, b, maxiter=10000000, verbose=False, acc=1e-6, scaling=3)
     print(f"x_me[3] = {x_me[3]}")
     lb_test = np.zeros(len(c))
-    for solver in solvers:
-        x = solve_qp(P=Q, q=c, G=A, h=b, lb=lb_test, ub=None, solver=solver)
-        print(x)
-        print("ist die Lösung von ", solver, ".")
+    # for solver in solvers:
+    #     x = solve_qp(P=Q, q=c, G=A, h=b, lb=lb_test, ub=None, solver=solver)
+    #     print(x)
+    #     print("ist die Lösung von ", solver, ".")
 
 
 elif test_case == 2: # Fathi [7]
@@ -393,8 +393,8 @@ elif test_case == 3: # Kleines Quadratisches Programm
 
     x_me = burke_xu(Q, c, A, b, maxiter=100, verbose=True, acc=1e-6, scaling=3)
     
-    print(f"Meine Lösung lautet x = {x_me}")
-    print(f"proxqp ergab x = {x_qp}")
+    # print(f"Meine Lösung lautet x = {x_me}")
+    # print(f"proxqp ergab x = {x_qp}")
 
 
 elif test_case == 4: # Lineares Programm
