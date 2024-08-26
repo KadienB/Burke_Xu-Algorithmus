@@ -327,6 +327,25 @@ def lp_to_standardform(
 )   -> Optional[np.ndarray]:
     r"""Beschreibung
 
+    Die Methode wandelt ein beliebiges Lineares Programm (in Ausgangsform) in ein Lineares Programm in Standardform um.
+    
+    Die Eingabeparameter erfüllen dabei die Form:
+
+    min f(x) = c^T * x
+
+
+    u.d.N.
+
+    A_eq * x = b_eq
+
+
+    A_ineq * x =< b_ineq
+
+
+    bounds = (lb, ub)
+
+    lb =< x =< ub
+
     Parameters
     ----------
     c :
@@ -430,11 +449,11 @@ def lp_to_standardform(
             # x <= np.inf
             if ub is None:
 
-                # 0 <= x <= np.inf
+                # Fall 1: 0 <= x <= np.inf
                 if lb == 0:
                     pass
 
-                # -np.inf <= x <= np.inf
+                # Fall 2: -np.inf <= x <= np.inf
                 elif lb is None:
 
                     # i-te Spalte negieren und rechts anfügen
@@ -447,7 +466,7 @@ def lp_to_standardform(
                     # transformation eintragen
                     transformations[i] = (2, A_std.shape[1]-1)
 
-                # lb <= x <= np.inf
+                # Fall 3: lb <= x <= np.inf
                 elif lb is not None:
                     
                     # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
@@ -462,7 +481,7 @@ def lp_to_standardform(
             # x <= ub
             elif ub is not None:
 
-                # 0 <= x <= ub
+                # Fall 4: 0 <= x <= ub
                 if lb == 0:
                     
                     # neue Zeile für x <= ub hinzufügen
@@ -484,7 +503,7 @@ def lp_to_standardform(
                         b_std = np.append(b_std, ub)
                     c_std = np.append(c_std, 0)
 
-                # -np.inf <= x <= ub    
+                # Fall 5: -np.inf <= x <= ub    
                 elif lb is None:
                     
                     # Vorzeichenwechsel der Spalte i
@@ -506,7 +525,7 @@ def lp_to_standardform(
                     # transformation eintragen
                     transformations[i] = (5, lb)
 
-                # lb <= x <= ub
+                # Fall 6: lb <= x <= ub
                 elif lb is not None:
                     
                     # neue Zeile für x - lb <= ub - lb, also x <= ub hinzufügen
@@ -517,7 +536,7 @@ def lp_to_standardform(
                         new_column = np.zeros((A_std.shape[0], 1))
                         new_column[A_std.shape[0] - 1] = 1
                         A_std = np.hstack([A_std, new_column])
-                        b_std = np.append(b_std, ub)
+                        b_std = np.append(b_std, ub-lb)
                     if use_sparse is True:
                         new_row = np.zeros((1, A_std.shape[1]))
                         new_row[0,i] = 1
@@ -525,7 +544,7 @@ def lp_to_standardform(
                         new_column = np.zeros((A_std.shape[0], 1))
                         new_column[A_std.shape[0] - 1] = 1
                         A_std = spa.hstack([A_std, spa.csc_matrix(new_column)]).tocsc()
-                        b_std = np.append(b_std, ub)
+                        b_std = np.append(b_std, ub-lb)
                     c_std = np.append(c_std, 0)
 
                     # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
@@ -535,19 +554,20 @@ def lp_to_standardform(
                         b_std += A_std[:, i].toarray().ravel() * lb
 
                     # transformation eintragen
-                    transformations[i] = (6, lb, ub)
+                    transformations[i] = (6, lb)
 
 
     return A_std, b_std, c_std, transformations, initial_length, use_sparse
 
 def standardform_to_lp(
-    x_standardform: np.ndarray,
+    x_std: np.ndarray,
     transformations: dict,
+    initial_length: int,
     verbose: bool = False,
 )   -> Optional[np.ndarray]:
     r"""Beschreibung
 
-    Beschreibung
+    Die Methode wandelt den Lösungsvektor des Linearen Programms in Standardform in den Lösungsvektor des Linearen Programms in Ausgangsform um.
 
     Parameters
     ----------
@@ -566,9 +586,27 @@ def standardform_to_lp(
     if verbose:
         print(f"Starting presolve_lp calculation...")
 
-    x_lp = 5
+    # transformations dictionary durchgehen und nach Fallunterscheidung Umwandlungen rückgängig machen
+    for key in transformations.keys():
 
-    return x_lp
+        # Fall 2: Wir ziehen x_i_- von x_i_+ ab.
+        if transformations[key][0] == 2:
+            x_std[key] -= x_std[transformations[key][1]]
+
+        # Fall 3: Wir addieren lb auf x', da x' = x - lb gilt.
+        elif transformations[key][0] == 3:
+            x_std[key] += x_std[transformations[key][1]]
+
+        # Fall 5: Wir addieren lb auf x', da x' = - x - lb gilt. Dann erhalten wir durch 
+        elif transformations[key][0] == 5:
+            x_std[key] += x_std[transformations[key][1]]
+            x_std[key] = -x_std[key]
+
+        # Fall 6:
+        elif transformations[key][0] == 6:
+            x_std[key] += x_std[transformations[key][1]]
+
+    return x_std
 
 def presolve_lp(
     A_std: Union[np.ndarray, spa.csc_matrix],

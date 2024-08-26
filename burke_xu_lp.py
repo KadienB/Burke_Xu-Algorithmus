@@ -233,9 +233,14 @@ if test_case == 2:
     b_eq = np.array([7])
     A_ineq = np.array([[2, 2, -1], [-1, 1, 0]])
     b_ineq = np.array([10, -3])
-    lb = np.array([-1, None, 0])
-    up = np.array([13, 7, 11])
+    # lb = np.array([-1, None, 0])
+    # up = np.array([13, 7, 11])
+    lb = np.array([-100, 0, 0])
+    up = np.array([None, None, None])
     bounds = np.vstack((lb, up)).T
+    lb = np.array([0, 0, 0, 0, 0])
+    up = np.array([None, None, None, None, None])
+    bounds1 = np.vstack((lb, up)).T
 
     print(f"c = {c}")
     print(f"A_eq = {A_eq}")
@@ -251,6 +256,8 @@ if test_case == 2:
 
     A_std, b_std, c_std, transformations, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=True)
 
+    print(np.linalg.matrix_rank(A_std))
+
     if use_sparse is False:
         print(f"A = {A_std}")
     elif use_sparse is True:
@@ -261,4 +268,13 @@ if test_case == 2:
     print(f"sol_length = {sol_length}")
     print(f"use_sparse = {use_sparse}")
 
-    sp.optimize.linprog(c, A_ub=A_ineq, b_ub=b_ineq, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+    result1 = sp.optimize.linprog(c, A_ub=A_ineq, b_ub=b_ineq, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+    print(result1.x)
+    print(np.dot(c, result1.x))
+    result2 = sp.optimize.linprog(c_std, A_eq = A_std, b_eq = b_std, method='highs')
+    print(result2.x)
+    print(A_std @ result2.x - b_std)
+    print(np.dot(c_std, result2.x))
+    res = mt.standardform_to_lp(x_std=result2.x, transformations=transformations, initial_length=sol_length, verbose=True)
+    print(res)
+    print(np.dot(c_std, res))
