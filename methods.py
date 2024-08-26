@@ -368,6 +368,13 @@ def lp_to_standardform(
         use_sparse = True
     else:
         raise ValueError("One Input Matrix is 'csc', while the other one is an np.array.")
+    
+    # Sicherstellung des richtigen Datentyps
+    if use_sparse is False:
+        A_eq = A_eq.astype(np.float64)
+        A_ineq = A_ineq.astype(np.float64)
+    b_eq = b_eq.astype(np.float64)
+    c = c.astype(np.float64)
 
     # Anzahl der Variablen
     initial_length = len(c)
@@ -384,16 +391,16 @@ def lp_to_standardform(
         if use_sparse is False:
             A_std = np.empty((0, c.size))
             b_std = np.empty(0)
-        else:
+        elif use_sparse is True:
             A_std = spa.csc_matrix((0, c.size)) 
             b_std = np.empty(0)
     c_std = c
 
-
-    """ Hinzufügen der Equality und Inequality Constraints """
+    """ Hinzufügen der Inequality Constraints """
 
     if A_ineq is not None:
         c_std = np.hstack((c_std, np.zeros(A_ineq.shape[0])))
+
         # Blockmatrix erstellen
         if use_sparse is False:
             A_eq_block = np.hstack([A_std, np.zeros((A_std.shape[0], A_ineq.shape[0]))])
@@ -402,17 +409,105 @@ def lp_to_standardform(
             b_std = np.hstack([b_std, b_ineq])
 
         # Sparse Blockmatrix erstellen
-        else:
+        elif use_sparse is True:
             A_eq_block = spa.hstack([A_std, spa.csc_matrix((A_std.shape[0], A_ineq.shape[0]))])
             A_ineq_block = spa.hstack([A_ineq, spa.eye(A_ineq.shape[0], A_ineq.shape[0])])
-            A_std = spa.vstack([A_eq_block, A_ineq_block])
+            A_std = spa.vstack([A_eq_block, A_ineq_block]).tocsc()
             b_std = np.hstack([b_std, b_ineq])
 
 
     """ Hinzufügen der Box Constraints """
 
-    # Liste für Transformationen
-    transformations = []
+    if bounds is not None:
+
+        # Dictionary für Transformationen
+        transformations = {}
+        
+        # Iteration über das bounds 2-Dim np.ndarray mit Fallunterscheidung
+        for i in range(initial_length):
+            lb, ub = bounds[i]
+
+            # x <= np.inf
+            if ub is None:
+
+                # 0 <= x <= np.inf
+                if lb == 0:
+                    pass
+
+                # -np.inf <= x <= np.inf
+                elif lb is None:
+
+                    # i-te Spalte negieren und rechts anfügen
+                    if use_sparse is False:
+                        A_std = np.hstack([A_std, -A_std[:, i][:, np.newaxis]])
+                    elif use_sparse is True:
+                        A_std = spa.hstack([A_std, -A_std.getcol(i)]).tocsc()
+
+                # lb <= x <= np.inf
+                elif lb is not None:
+                    
+                    # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
+                    if use_sparse is False:
+                        b_std += A_std[:, i] * lb
+                    elif use_sparse is True:
+                        b_std += A_std[:, i].toarray().ravel() * lb
+            
+            # x <= ub
+            elif ub is not None:
+
+                # 0 <= x <= ub
+                if lb == 0:
+                    
+                    # neue Zeile für x <= ub hinzufügen
+                    if use_sparse is False:
+                        new_row = np.zeros((1, A_std.shape[1]))
+                        new_row[0,i] = 1
+                        A_std = np.vstack([A_std, new_row])
+                        new_column = np.zeros((A_std.shape[0], 1))
+                        new_column[A_std.shape[0] - 1] = 1
+                        A_std = np.hstack([A_std, new_column])
+                        b_std = np.append(b_std, ub)
+                    if use_sparse is True:
+                        new_row = np.zeros((1, A_std.shape[1]))
+                        new_row[0,i] = 1
+                        A_std = spa.vstack([A_std, spa.csc_matrix(new_row)]).tocsc()
+                        new_column = np.zeros((A_std.shape[0], 1))
+                        new_column[A_std.shape[0] - 1] = 1
+                        A_std = spa.hstack([A_std, spa.csc_matrix(new_column)]).tocsc()
+                        b_std = np.append(b_std, ub)
+
+                # -np.inf <= x <= ub    
+                elif lb is None:
+                    VZW_und_verschiebung = 1
+
+                # lb <= x <= ub
+                elif lb is not None:
+                    ub = ub - lb
+                    
+                    # neue Zeile für x - lb <= ub - lb hinzufügen
+                    if use_sparse is False:
+                        new_row = np.zeros((1, A_std.shape[1]))
+                        new_row[0,i] = 1
+                        A_std = np.vstack([A_std, new_row])
+                        new_column = np.zeros((A_std.shape[0], 1))
+                        new_column[A_std.shape[0] - 1] = 1
+                        A_std = np.hstack([A_std, new_column])
+                        b_std = np.append(b_std, ub)
+                    if use_sparse is True:
+                        new_row = np.zeros((1, A_std.shape[1]))
+                        new_row[0,i] = 1
+                        A_std = spa.vstack([A_std, spa.csc_matrix(new_row)]).tocsc()
+                        new_column = np.zeros((A_std.shape[0], 1))
+                        new_column[A_std.shape[0] - 1] = 1
+                        A_std = spa.hstack([A_std, spa.csc_matrix(new_column)]).tocsc()
+                        b_std = np.append(b_std, ub)
+
+                    # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
+                    if use_sparse is False:
+                        b_std += A_std[:, i] * lb
+                    elif use_sparse is True:
+                        b_std += A_std[:, i].toarray().ravel() * lb
+
 
     return A_std, b_std, c_std, transformations, initial_length, use_sparse
 
@@ -514,9 +609,17 @@ def linear_equation_solve(
 
     return # x
 
-# ----------------------------------------------------------------------------------------------------------------------------- #
-""" Ab hier die Methoden die für die Implementierung des Algorithmus für LCPs benutzt wurden und nicht mehr verwendet werden. """
-# ----------------------------------------------------------------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
+"""                                  Ab hier die Methoden die für die Implementierung des Algorithmus für LCPs benutzt wurden und nicht mehr verwendet werden.                                          """
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
 
 def linear_equation_formulate(
     x: np.ndarray,

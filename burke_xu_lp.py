@@ -233,23 +233,28 @@ if test_case == 2:
     b_eq = np.array([7])
     A_ineq = np.array([[2, 2, -1], [-1, 1, 0]])
     b_ineq = np.array([10, -3])
-    lb = np.array([-1, -np.inf, -3])
-    up = np.array([5, 7, np.inf])
+    lb = np.array([-1, -3, None])
+    up = np.array([None, 7, None])
+    bounds = np.vstack((lb, up)).T
 
+    print(f"c = {c}")
     print(f"A_eq = {A_eq}")
     print(f"b_eq = {b_eq}")
     print(f"A_ineq = {A_ineq}")
     print(f"b_ineq = {b_ineq} len(b_ineq) = {len(b_ineq)}")
     print(f"lb = {lb}")
     print(f"up = {up}")
-    print(f"c = {c}")
+    print(f"bounds = {bounds}")
 
-    A_eq = spa.csc_matrix(A_eq)
-    A_ineq = spa.csc_matrix(A_ineq)
+    # A_eq = spa.csc_matrix(A_eq)
+    # A_ineq = spa.csc_matrix(A_ineq)
 
-    A, b, c, indices, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, lb=lb, up=up, verbose=True)
+    A, b, c, indices, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=True)
 
-    print(f"A = {A}")
+    if use_sparse is False:
+        print(f"A = {A}")
+    elif use_sparse is True:
+        print(f"A = {A.toarray()}")
     print(f"b = {b} len(b) = {len(b)}")
     print(f"c = {c}")
     print(f"indices = {indices}")
