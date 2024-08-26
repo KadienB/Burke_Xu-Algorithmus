@@ -378,7 +378,6 @@ def lp_to_standardform(
 
     # Anzahl der Variablen
     initial_length = len(c)
-    num_vars = initial_length
 
 
     """ Hinzufügen der Equality Constraints """
@@ -395,6 +394,7 @@ def lp_to_standardform(
             A_std = spa.csc_matrix((0, c.size)) 
             b_std = np.empty(0)
     c_std = c
+
 
     """ Hinzufügen der Inequality Constraints """
 
@@ -442,6 +442,10 @@ def lp_to_standardform(
                         A_std = np.hstack([A_std, -A_std[:, i][:, np.newaxis]])
                     elif use_sparse is True:
                         A_std = spa.hstack([A_std, -A_std.getcol(i)]).tocsc()
+                    c_std = np.append(c_std, -c_std[i])
+                    
+                    # transformation eintragen
+                    transformations[i] = (2, A_std.shape[1]-1)
 
                 # lb <= x <= np.inf
                 elif lb is not None:
@@ -451,6 +455,9 @@ def lp_to_standardform(
                         b_std += A_std[:, i] * lb
                     elif use_sparse is True:
                         b_std += A_std[:, i].toarray().ravel() * lb
+
+                    # transformation eintragen
+                    transformations[i] = (3, lb)
             
             # x <= ub
             elif ub is not None:
@@ -475,16 +482,34 @@ def lp_to_standardform(
                         new_column[A_std.shape[0] - 1] = 1
                         A_std = spa.hstack([A_std, spa.csc_matrix(new_column)]).tocsc()
                         b_std = np.append(b_std, ub)
+                    c_std = np.append(c_std, 0)
 
                 # -np.inf <= x <= ub    
                 elif lb is None:
-                    VZW_und_verschiebung = 1
+                    
+                    # Vorzeichenwechsel der Spalte i
+                    if use_sparse is False:
+                        A_std[:, i] = -A_std[:, i]
+                    elif use_sparse is True:
+                        A_std[:, i] = -A_std[:, i].toarray()
+                    c_std[i] = -c_std[i]
+
+                    # damit behandeln wir den Fall -ub <= -x <= np.inf, also wie bei Fall 3
+                    lb = -ub
+
+                    # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
+                    if use_sparse is False:
+                        b_std += A_std[:, i] * lb
+                    elif use_sparse is True:
+                        b_std += A_std[:, i].toarray().ravel() * lb
+
+                    # transformation eintragen
+                    transformations[i] = (5, lb)
 
                 # lb <= x <= ub
                 elif lb is not None:
-                    ub = ub - lb
                     
-                    # neue Zeile für x - lb <= ub - lb hinzufügen
+                    # neue Zeile für x - lb <= ub - lb, also x <= ub hinzufügen
                     if use_sparse is False:
                         new_row = np.zeros((1, A_std.shape[1]))
                         new_row[0,i] = 1
@@ -501,6 +526,7 @@ def lp_to_standardform(
                         new_column[A_std.shape[0] - 1] = 1
                         A_std = spa.hstack([A_std, spa.csc_matrix(new_column)]).tocsc()
                         b_std = np.append(b_std, ub)
+                    c_std = np.append(c_std, 0)
 
                     # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
                     if use_sparse is False:
@@ -508,8 +534,41 @@ def lp_to_standardform(
                     elif use_sparse is True:
                         b_std += A_std[:, i].toarray().ravel() * lb
 
+                    # transformation eintragen
+                    transformations[i] = (6, lb, ub)
+
 
     return A_std, b_std, c_std, transformations, initial_length, use_sparse
+
+def standardform_to_lp(
+    x_standardform: np.ndarray,
+    transformations: dict,
+    verbose: bool = False,
+)   -> Optional[np.ndarray]:
+    r"""Beschreibung
+
+    Beschreibung
+
+    Parameters
+    ----------
+    a: 
+        in der Regel aktueller x-Vektor in |R^n.
+    b:
+        in der Regel aktueller y-Vektor in |R^n.
+    mu:
+        Glättungsparameter.
+    arg:
+        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    verbose: bool
+        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
+    """
+    
+    if verbose:
+        print(f"Starting presolve_lp calculation...")
+
+    x_lp = 5
+
+    return x_lp
 
 def presolve_lp(
     A_std: Union[np.ndarray, spa.csc_matrix],

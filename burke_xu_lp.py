@@ -233,8 +233,8 @@ if test_case == 2:
     b_eq = np.array([7])
     A_ineq = np.array([[2, 2, -1], [-1, 1, 0]])
     b_ineq = np.array([10, -3])
-    lb = np.array([-1, -3, None])
-    up = np.array([None, 7, None])
+    lb = np.array([-1, None, 0])
+    up = np.array([13, 7, 11])
     bounds = np.vstack((lb, up)).T
 
     print(f"c = {c}")
@@ -249,14 +249,16 @@ if test_case == 2:
     # A_eq = spa.csc_matrix(A_eq)
     # A_ineq = spa.csc_matrix(A_ineq)
 
-    A, b, c, indices, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=True)
+    A_std, b_std, c_std, transformations, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=True)
 
     if use_sparse is False:
-        print(f"A = {A}")
+        print(f"A = {A_std}")
     elif use_sparse is True:
-        print(f"A = {A.toarray()}")
-    print(f"b = {b} len(b) = {len(b)}")
-    print(f"c = {c}")
-    print(f"indices = {indices}")
+        print(f"A = {A_std.toarray()}")
+    print(f"b = {b_std} len(b) = {len(b_std)}")
+    print(f"c = {c_std}")
+    print(f"transformations = {transformations}")
     print(f"sol_length = {sol_length}")
     print(f"use_sparse = {use_sparse}")
+
+    sp.optimize.linprog(c, A_ub=A_ineq, b_ub=b_ineq, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
