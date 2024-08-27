@@ -471,9 +471,9 @@ def lp_to_standardform(
                     
                     # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
                     if use_sparse is False:
-                        b_std += A_std[:, i] * lb
+                        b_std += A_std[:, i] * -lb
                     elif use_sparse is True:
-                        b_std += A_std[:, i].toarray().ravel() * lb
+                        b_std += A_std[:, i].toarray().ravel() * -lb
 
                     # transformation eintragen
                     transformations[i] = (3, lb)
@@ -518,15 +518,21 @@ def lp_to_standardform(
 
                     # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
                     if use_sparse is False:
-                        b_std += A_std[:, i] * lb
+                        b_std += A_std[:, i] * -lb
                     elif use_sparse is True:
-                        b_std += A_std[:, i].toarray().ravel() * lb
+                        b_std += A_std[:, i].toarray().ravel() * -lb
 
                     # transformation eintragen
                     transformations[i] = (5, lb)
 
                 # Fall 6: lb <= x <= ub
                 elif lb is not None:
+
+                    # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
+                    if use_sparse is False:
+                        b_std += A_std[:, i] * -lb
+                    elif use_sparse is True:
+                        b_std += A_std[:, i].toarray().ravel() * -lb
                     
                     # neue Zeile für x - lb <= ub - lb, also x <= ub hinzufügen
                     if use_sparse is False:
@@ -546,12 +552,6 @@ def lp_to_standardform(
                         A_std = spa.hstack([A_std, spa.csc_matrix(new_column)]).tocsc()
                         b_std = np.append(b_std, ub-lb)
                     c_std = np.append(c_std, 0)
-
-                    # substutiere x' = x - lb, was dazu führt dass man die i-te Spalte mit lb multipliziert auf b_std addieren muss
-                    if use_sparse is False:
-                        b_std += A_std[:, i] * lb
-                    elif use_sparse is True:
-                        b_std += A_std[:, i].toarray().ravel() * lb
 
                     # transformation eintragen
                     transformations[i] = (6, lb)
@@ -595,18 +595,21 @@ def standardform_to_lp(
 
         # Fall 3: Wir addieren lb auf x', da x' = x - lb gilt.
         elif transformations[key][0] == 3:
-            x_std[key] += x_std[transformations[key][1]]
+            x_std[key] += transformations[key][1]
 
         # Fall 5: Wir addieren lb auf x', da x' = - x - lb gilt. Dann erhalten wir durch 
         elif transformations[key][0] == 5:
-            x_std[key] += x_std[transformations[key][1]]
+            x_std[key] += transformations[key][1]
             x_std[key] = -x_std[key]
 
         # Fall 6:
         elif transformations[key][0] == 6:
-            x_std[key] += x_std[transformations[key][1]]
+            x_std[key] += transformations[key][1]
 
-    return x_std
+    slack = x_std[initial_length:]
+    x_std = x_std[:initial_length]
+
+    return x_std, slack
 
 def presolve_lp(
     A_std: Union[np.ndarray, spa.csc_matrix],

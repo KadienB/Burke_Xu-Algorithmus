@@ -228,19 +228,16 @@ if test_case == 1:
 
 if test_case == 2:
 
-    c = np.array([1, 2, 3])
-    A_eq = np.array([[1, 2, 3]])
+    c = np.array([-1, -2, -3])
+    A_eq = np.array([[-1, 14, 3]])
     b_eq = np.array([7])
-    A_ineq = np.array([[2, 2, -1], [-1, 1, 0]])
-    b_ineq = np.array([10, -3])
+    A_ineq = np.array([[2, 3.5, -1], [1, 1, 11.8]])
+    b_ineq = np.array([70, 50])
     # lb = np.array([-1, None, 0])
     # up = np.array([13, 7, 11])
-    lb = np.array([-100, 0, 0])
-    up = np.array([None, None, None])
-    bounds = np.vstack((lb, up)).T
-    lb = np.array([0, 0, 0, 0, 0])
-    up = np.array([None, None, None, None, None])
-    bounds1 = np.vstack((lb, up)).T
+    lb = np.array([-20, -10, -5])
+    ub = np.array([15, 25, 30])
+    bounds = np.vstack((lb, ub)).T
 
     print(f"c = {c}")
     print(f"A_eq = {A_eq}")
@@ -248,7 +245,7 @@ if test_case == 2:
     print(f"A_ineq = {A_ineq}")
     print(f"b_ineq = {b_ineq} len(b_ineq) = {len(b_ineq)}")
     print(f"lb = {lb}")
-    print(f"up = {up}")
+    print(f"up = {ub}")
     print(f"bounds = {bounds}")
 
     # A_eq = spa.csc_matrix(A_eq)
@@ -275,6 +272,6 @@ if test_case == 2:
     print(result2.x)
     print(A_std @ result2.x - b_std)
     print(np.dot(c_std, result2.x))
-    res = mt.standardform_to_lp(x_std=result2.x, transformations=transformations, initial_length=sol_length, verbose=True)
+    res, slack = mt.standardform_to_lp(x_std=result2.x, transformations=transformations, initial_length=sol_length, verbose=True)
     print(res)
-    print(np.dot(c_std, res))
+    print(np.dot(c, res))
