@@ -1,6 +1,7 @@
 import numpy as np
 import scipy as sp
 import scipy.sparse as spa
+import sksparse as skit
 import methods as mt
 import burke_xu_lp as lp
 
@@ -8,7 +9,7 @@ import burke_xu_lp as lp
 """ Einstellungen """
 
 test_case = 0
-verbose = False
+verbose = True
 np.set_printoptions(precision=2, suppress=True, linewidth=400)
 
 
@@ -45,18 +46,19 @@ np.set_printoptions(precision=2, suppress=True, linewidth=400)
 
 # print(result)
 
+
 if test_case == 0:
 
     """ Laden der Daten """
 
     # Speichern der .npz Datei im Dictionary "data"
-    data=np.load("free_for_all_qpbenchmark-main/data/CZPROB.npz", allow_pickle=True)
+    data=np.load("free_for_all_qpbenchmark-main/data/CYCLE.npz", allow_pickle=True)
 
     # Auslesen der Daten aus dem Dictionary
     c = data["c"]
-    A_eq = data["A_eq"]
+    A_eq = spa.csc_matrix(data["A_eq"])
     b_eq = data["b_eq"]
-    A_ineq = data["A_ub"]
+    A_ineq = spa.csc_matrix(data["A_ub"])
     b_ineq = data["b_ub"]
     bounds = np.squeeze(data["bounds"])
     A_std, b_std, c_std, transformations, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
@@ -77,24 +79,30 @@ if test_case == 0:
     print(np.dot(c_std, result2.x))
 
     # Zurückkonvertierte Lösung
-    res, slack = mt.standardform_to_lp(x_std=result2.x, transformations=transformations, initial_length=sol_length, verbose=verbose)
-    print(res)
-    print(np.dot(c, res))
+    result2back, slack = mt.standardform_to_lp(x_std=result2.x, transformations=transformations, initial_length=sol_length, verbose=verbose)
+    print(result2back)
+    print(np.dot(c, result2back))
 
 
     """ Anwendung von burke_xu_lp auf die Standardform des Problems """
 
     # Lösung mit burke_xu_lp in Standardform
-    x = lp.burke_xu_lp(c=c_std, A_eq=A_std, b_eq=b_std, verbose=verbose)
-    result3 = mt.standardform_to_lp(x_std = x, transformations=transformations, initial_length=sol_length, verbose=verbose)
-    print(result3)
+    # x = lp.burke_xu_lp(c=c_std, A_eq=A_std, b_eq=b_std, maxiter=100, acc=1e-4, verbose=verbose)
+    # result3 = mt.standardform_to_lp(x_std = x, transformations=transformations, initial_length=sol_length, verbose=verbose)
+    # print(result3)
+    # print(np.dot(c_std, result3))
 
 
     """ Anwendung von burke_xu_lp auf das Ausgangsproblem """
 
-    # to be implemented
+    # Lösung mit burke_xu_lp des eigentlichen Problems
+    result3back, slack = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=10000, acc=1e-5, verbose=verbose)
+    print(result3back)
+    print(np.dot(c, result3back))
 
 
+    print(result1.x)
+    print(result2back)
 
 
     """ Selbstgeschrieben Testcases """
@@ -106,6 +114,8 @@ elif test_case == 1:
     A_eq = np.array([[1, 1, 3],
                     [1, 2, 4]])
     b_eq = np.array([2, 3])
+
+    A_eq = spa.csc_matrix(A_eq)
 
     # Lösen des linearen Programms
     result = sp.optimize.linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), method='highs')

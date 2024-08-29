@@ -1,10 +1,11 @@
 import os
+from typing import Optional, Iterator, Union
+import time
 import numpy as np
 import scipy as sp
 import scipy.sparse as spa
+import sksparse as skit
 import methods as mt
-import time
-from typing import Optional, Iterator, Union
 
 def burke_xu_lp(
     c: np.ndarray = None,
@@ -76,8 +77,8 @@ def burke_xu_lp(
 
     """ Lineares Programm auf Normalform bringen """
 
-    A = A_eq
-    b = b_eq
+    c_save = c
+    A, b, c, transformations, initial_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
 
     """ Initialisierung des Algorithmus """
 
@@ -85,24 +86,30 @@ def burke_xu_lp(
     S0 = None
     S1 = None
     S2 = None
+    problem = 1
 
     # Startwerte der Iterationsvariablen
-    x = np.linalg.pinv(A) @ b
+    factor = mt.cholesky_decomposition_lhs(A=A, problem=1, use_sparse=use_sparse, verbose=verbose)
+    if use_sparse is False:
+        pass
+    elif use_sparse is True:
+        x = factor(b)
+        x = A.T.dot(x)
     l = np.zeros(A.shape[0])
     s = c
     if verbose:
         print(f"Ax - b = {A @ x - b}")
         print(f"A^T*lambda + s - c = {A.T @ l + s - c}")
 
-    mu = 10
+    mu = max(np.max(x), np.max(s),0)*1.1
     if np.linalg.norm(mt.big_phi(x, s, 0)) < acc:
         print(f"initval was solution")
         maxiter = 0
 
     # Externe Variablen
-    beta = 100000
-    while np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose)) > beta * mu:
-        beta = beta * 2
+    beta = np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose)) / mu
+    while beta < 2 * np.sqrt(len(x)):
+        beta = beta * 1.1
     sigma = 0.5
     alpha_1 = 0.9
     alpha_2 = 0.99
@@ -118,6 +125,10 @@ def burke_xu_lp(
     # Schleife zur Ausführung des Algorithmus
     for k in range(maxiter):
 
+        # Abbruch-Kriterium
+        if mu < acc or np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose), ord=np.inf) < acc:
+            break
+
         # Ausgabe der aktuellen Iterationsvariablen
         print(f"-----------------------------------------------------------")
         print(f"x^{k} = {x}")
@@ -127,43 +138,37 @@ def burke_xu_lp(
         print(f"-----------------------------------------------------------")
 
         # Prädiktor-Schritt
-        lhs = mt.linear_equation_formulate_lhs(x, s, l, mu, A, problem=1, verbose=verbose)
-        rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem=1, steptype=1, verbose=verbose)
-        cholesky, low = sp.linalg.cho_factor(lhs)
-        delta_l = sp.linalg.cho_solve((cholesky, low), rhs)
-        delta_s = -1 * A.T @ delta_l
+        # lhs = mt.linear_equation_formulate_lhs(x, s, l, mu, A, problem=1, verbose=verbose)
+        rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem, steptype=1, verbose=verbose)
+        factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, verbose=verbose)
+        # cholesky, low = sp.linalg.cho_factor(lhs)
+        delta_l = factor(rhs)
+        delta_s = -A.T.dot(delta_l)
         delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
-        x, l, s, mu, step = mt.predictor_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_1, beta, acc, verbose=verbose)
+        x, s, l, mu, step = mt.predictor_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_1, beta, acc, verbose=verbose)
 
         # Korrektor-Schritt
         if step == 0:
             if verbose:
                 print("Nullstep has been taken.")
-                print(f"-----------------------------------------------------------")
-                print(f"x^{k} = {x}")
-                print(f"lambda^{k} = {l}")
-                print(f"s^{k} = {s}")
-                print(f"mu_{k} = {mu}")
-                print(f"-----------------------------------------------------------")
             nullstep += 1
             rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem=1, steptype=2, verbose=verbose)
-            delta_l = sp.linalg.cho_solve((cholesky, low), rhs)
-            delta_s = -1 * A.T @ delta_l
+            delta_l = factor(rhs)
+            delta_s = -A.T.dot(delta_l)
             delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         elif step == 1:
-            print(f"-----------------------------------------------------------")
-            print(f"x^{k + 1} = {x}")
-            print(f"s^{k + 1} = {s}")
-            print(f"mu_{k + 1} = {mu}")
-            print(f"-----------------------------------------------------------")
             maxiter = k + 1
             break
         elif step == 2:
-            lhs = mt.linear_equation_formulate_lhs(x, s, l, mu, A, problem=1, verbose=verbose)
+            # lhs = mt.linear_equation_formulate_lhs(x, s, l, mu, A, problem=1, verbose=verbose)
             rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem=1, steptype=2, verbose=verbose)
-            cholesky, low = sp.linalg.cho_factor(lhs)
-            delta_l = sp.linalg.cho_solve((cholesky, low), rhs)
-            delta_s = -1 * A.T @ delta_l
+            factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, verbose=verbose)
+            # cholesky, low = sp.linalg.cho_factor(lhs)
+            if use_sparse is False:
+                pass
+            elif use_sparse is True:
+                delta_l = factor(rhs)
+            delta_s = -A.T.dot(delta_l)
             delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         x, l, s, mu = mt.corrector_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_2, beta, sigma, verbose=verbose)
 
@@ -197,6 +202,21 @@ def burke_xu_lp(
     # print(f"Es wurde {nullstep} mal der Prediktor-Schritt abgelehnt.")
 
 
-    """ Überprüfung des Ergebnisses """
+    """ Überprüfung und Rücktransformation des Ergebnisses """
 
-    return x
+    # Überprüfung der KKT-Bedingungen und Berechnung des minimalen Wertes
+    print("||A^T * lambda + s - c|| =")
+    print(np.linalg.norm(A.T.dot(l) + s - c))
+    print("||A * x - b|| =")
+    print(np.linalg.norm(A.dot(x) - b))
+    print("||x^T*s|| =")
+    print(np.linalg.norm(x.T @ s))
+    print("haben x oder s negative Werte?")
+    print(np.any(x < -acc) or np.any(s < -acc))
+
+    # Rücktransformation
+    result = mt.standardform_to_lp(x, transformations, initial_length, verbose=verbose)
+
+
+
+    return result
