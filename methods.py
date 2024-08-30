@@ -121,7 +121,8 @@ def linear_equation_formulate_rhs(
     sigma: Optional[float],
     A: Union[np.ndarray, spa.csc_matrix],
     problem: int,
-    steptype: int,
+    use_sparse = False,
+    steptype: int = 0,
     verbose: bool = False,
 )   -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
     r"""Formulierung der rechten Seite des Gleichungssystem, das in jedem Prädiktor- und Korrektorschritt gelöst werden muss.
@@ -146,16 +147,30 @@ def linear_equation_formulate_rhs(
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
 
-    if problem == 1:
-        # Vorerst instabil
-        D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
-        # vorerst instabil
-        if steptype == 1:
-            rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) + (-1 * mu * nabla_big_phi(x, a, mu, 3, verbose)))
-        elif steptype == 2:
-            rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) + (- 1 * mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
-        else:
-            raise ValueError("Steptype must be 1 or 2.")
+
+    if use_sparse is False:
+        if problem == 1:
+            # Vorerst instabil
+            D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
+            # vorerst instabil
+            if steptype == 1:
+                rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) + (-1 * mu * nabla_big_phi(x, a, mu, 3, verbose)))
+            elif steptype == 2:
+                rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) + (- 1 * mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
+            else:
+                raise ValueError("Steptype must be 1 or 2.")
+            
+    elif use_sparse is True:
+        if problem == 1:
+            # Vorerst instabil
+            D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
+            # vorerst instabil
+            if steptype == 1:
+                rhs = A.dot(spa.diags(D_x_inv)).dot((big_phi(x, a, mu, verbose)) + (-1 * mu * nabla_big_phi(x, a, mu, 3, verbose)))
+            elif steptype == 2:
+                rhs = A.dot(spa.diags(D_x_inv)).dot((big_phi(x, a, mu, verbose)) + (- 1 * mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
+            else:
+                raise ValueError("Steptype must be 1 or 2.")
     
     return rhs
 
@@ -167,6 +182,7 @@ def cholesky_decomposition_lhs(
     problem: int = 0,
     use_sparse: bool = False,
     factor: Optional[cholmod.Factor] = None,
+    regularizer: Optional[float] = 0,
     verbose: bool = False,    
 )   -> Optional[Tuple[np.ndarray, np.ndarray]]:
     r"""Beschreibung
@@ -203,7 +219,7 @@ def cholesky_decomposition_lhs(
                 print("Es war noch kein Factor vorhanden.")
                 start_time=time.time()
 
-            factor = cholmod.cholesky_AAt(A, beta=1e-4)
+            factor = cholmod.cholesky_AAt(A, beta=regularizer)
 
             if verbose:
                 end_time = time.time()
@@ -217,7 +233,7 @@ def cholesky_decomposition_lhs(
             if verbose:
                 start_time=time.time()
 
-            factor.cholesky_AAt_inplace(A.dot(D), beta=1e-4)
+            factor.cholesky_AAt_inplace(A.dot(D), beta=regularizer)
 
 
             if verbose:
@@ -271,6 +287,9 @@ def predictor_step(
             b = b + delta_b
     elif np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose)) > beta * mu:
         step = 0
+        if verbose: 
+            print(f"Prädiktor-Schritt abgelehnt, da {np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose))} > {beta * mu}")
+            print(f"War der vorherige Wert in der Umgebung? {np.linalg.norm(big_phi(x , a, mu, verbose=verbose))} <= {beta * mu}")
     else:
         step = 2
         s = 1
@@ -340,7 +359,7 @@ def corrector_step(
     mu = (1 - (sigma * (alpha_2 ** t))) * mu
     if b is not None:
         b = b + ((alpha_2 ** t) * delta_b)
-        return x, b, a, mu
+        return x, a, b, mu
 
     return x, a, mu
 
@@ -467,7 +486,7 @@ def lp_to_standardform(
     # Dictionary für Transformationen
     transformations = {}
 
-    if bounds is not None:
+    if bounds is not None and len(bounds) > 0:
 
         
         # Iteration über das bounds 2-Dim np.ndarray mit Fallunterscheidung

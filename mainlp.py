@@ -1,3 +1,5 @@
+import os
+import time
 import numpy as np
 import scipy as sp
 import scipy.sparse as spa
@@ -8,43 +10,71 @@ import burke_xu_lp as lp
 
 """ Einstellungen """
 
-test_case = 0
-verbose = True
-np.set_printoptions(precision=2, suppress=True, linewidth=400)
+loop = True
+test_case = -1
+verbose = False
+acc = 1e-6
+maxiter = 1000
+# np.set_printoptions(precision=2, suppress=True, linewidth=400)
 
+if loop == True:
+    # Pfad zu den .npz-Dateien
+    data_path = "/workspaces/Python/free_for_all_qpbenchmark-main/data"
+    output_file = os.path.join(data_path, "testergebnisse.txt")
 
-# # Rang der Gleichheits-Constraints-Matrix berechnen
-# rank_A_eq = np.linalg.matrix_rank(A_eq)
-# print(f"Rang von A_eq: {rank_A_eq}, Anzahl der Zeilen: {A_eq.shape[0]}")
+    # Alle .npz-Dateien im Verzeichnis durchlaufen
+    npz_files = [f for f in os.listdir(data_path) if f.endswith('.npz')]
 
-# # Überprüfen, ob A_eq vollen Zeilenrang hat
-# if rank_A_eq == A_eq.shape[0]:
-#     print("A_eq hat vollen Zeilenrang.")
-# else:
-#     print("A_eq hat keinen vollen Zeilenrang.")
+    # Datei einmalig öffnen, Kopfzeile schreiben
+    with open(output_file, "w") as file:
+        file.write(f"{'Datei':<30}{'Fun':<20}{'Nullstep':<10}{'MaxIter':<10}{'Time':<15}{'Status':<10}{'Result':<50}{'Slack':<50}\n")
+        file.write("="*180 + "\n")
 
-# # Rang der Ungleichheits-Constraints-Matrix berechnen
-# rank_A_ub = np.linalg.matrix_rank(A_ub)
-# print(f"Rang von A_ub: {rank_A_ub}, Anzahl der Zeilen: {A_ub.shape[0]}")
+    # Ergebnisse in die Textdatei schreiben, nach jedem Testfall
+    for npz_file in npz_files:
+        try:
+            # Laden der Daten
+            data = np.load(os.path.join(data_path, npz_file), allow_pickle=True)
+            c = data["c"]
+            A_eq = spa.csc_matrix(data["A_eq"])
+            b_eq = data["b_eq"]
+            A_ineq = spa.csc_matrix(data["A_ub"])
+            b_ineq = data["b_ub"]
+            bounds = np.squeeze(data["bounds"])
+            
+            # Algorithmus 1
+            start_time = time.time()
+            try:
+                result, slack, fun, nullstep, maxiter, exec_time = lp.burke_xu_lp(
+                    c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
+                    bounds=bounds, maxiter=maxiter, acc=acc, verbose=verbose
+                )
+                status = "Erfolg"
+            except Exception as e:
+                # Algorithmus 2 bei Fehler
+                try:
+                    result, slack, fun, nullstep, maxiter, exec_time = lp.burke_xu_lp(
+                        c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
+                        bounds=bounds, maxiter=100, acc=acc, regularizer=(acc*acc), verbose=verbose
+                    )
+                    status = "CrashErfolg"
+                except Exception as e2:
+                    status = "Fehler"
+                    result, slack, fun, nullstep, maxiter, exec_time = None, None, None, None, None, None
+            
+            # Datei öffnen und schreiben
+            with open(output_file, "a") as file:
+                if status == "Erfolg":
+                    file.write(f"{npz_file:<30}{fun:<20.10f}{nullstep:<10}{maxiter:<10}{exec_time:<15.6f}{status:<10}{str(result)[:50]:<50}{str(slack)[:50]:<50}\n")
+                else:
+                    file.write(f"{npz_file:<30}{'':<20}{'':<10}{'':<10}{'':<15}{status:<10}\n")
+        
+        except Exception as e:
+            # Fehler beim Laden der Datei oder beim Ausführen des Algorithmus
+            with open(output_file, "a") as file:
+                file.write(f"{npz_file:<30}{'':<20}{'':<10}{'':<10}{'':<15}{'Fehler':<10}\n")
 
-# # Überprüfen, ob A_ub vollen Zeilenrang hat
-# if rank_A_ub == A_ub.shape[0]:
-#     print("A_ub hat vollen Zeilenrang.")
-# else:
-#     print("A_ub hat keinen vollen Zeilenrang.")
-
-# nonzeros_per_column = np.count_nonzero(A_eq, axis=0)
-
-# print("Matrix:")
-# print(A_eq)
-# print("\nAnzahl der Nicht-Null-Werte in jeder Spalte:")
-# np.set_printoptions(threshold=np.inf)
-# print(nonzeros_per_column)
-
-# options = {"presolve": True, "maxiter": 0}
-# result = sp.optimize.linprog(c, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=bounds, options=options, method="highs")
-
-# print(result)
+    print(f"Die Ergebnisse wurden in '{output_file}' gespeichert.")
 
 
 if test_case == 0:
@@ -52,7 +82,7 @@ if test_case == 0:
     """ Laden der Daten """
 
     # Speichern der .npz Datei im Dictionary "data"
-    data=np.load("free_for_all_qpbenchmark-main/data/CYCLE.npz", allow_pickle=True)
+    data=np.load("free_for_all_qpbenchmark-main/data/DEGEN3.npz", allow_pickle=True)
 
     # Auslesen der Daten aus dem Dictionary
     c = data["c"]
@@ -61,6 +91,15 @@ if test_case == 0:
     A_ineq = spa.csc_matrix(data["A_ub"])
     b_ineq = data["b_ub"]
     bounds = np.squeeze(data["bounds"])
+
+    if verbose:
+        print(f"c = {c}")
+        print(f"A_eq = {A_eq}")
+        print(f"b_eq = {b_eq}")
+        print(f"A_ineq = {A_ineq}")
+        print(f"b_ineq = {b_ineq}")
+        print(f"bounds = {bounds}")
+
     A_std, b_std, c_std, transformations, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
     """ Anwendung von scipy.optimize.linprog auf das Ausgangsproblem """
 
@@ -96,7 +135,7 @@ if test_case == 0:
     """ Anwendung von burke_xu_lp auf das Ausgangsproblem """
 
     # Lösung mit burke_xu_lp des eigentlichen Problems
-    result3back, slack = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=10000, acc=1e-5, verbose=verbose)
+    result3back, slack = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, verbose=verbose)
     print(result3back)
     print(np.dot(c, result3back))
 
