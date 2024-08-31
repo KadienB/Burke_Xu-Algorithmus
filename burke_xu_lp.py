@@ -98,8 +98,11 @@ def burke_xu_lp(
     elif use_sparse is True:
         x = factor(b)
         x = A.T.dot(x)
-    l = np.zeros(A.shape[0])
-    s = c
+    # l = np.zeros(A.shape[0])
+    # s = c
+    l = factor(A.dot(c))
+    s = c - A.T.dot(l)
+
 
     # Externe Variablen
     mu = np.sqrt(np.max(np.maximum(0, x * s)))*1.1
@@ -154,9 +157,13 @@ def burke_xu_lp(
         # Prädiktor-Schritt
         rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem, use_sparse, steptype=1, verbose=verbose)
         factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, regularizer=regularizer, verbose=verbose)
+        np.set_printoptions(threshold=np.inf)
+        print(A.dot(mt.nabla_big_phi(x, s, mu, 0, False, verbose=verbose)).dot(mt.nabla_big_phi(x, s, mu, 0, False, verbose=verbose).dot(A.T)).toarray())
+        print(rhs)
+        np.set_printoptions(threshold=1000)
         delta_l = factor(rhs)
         delta_s = -A.T.dot(delta_l)
-        delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) - (mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
+        delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ ((np.diag(mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose)) @ delta_s) + (mt.big_phi(x, s, mu, verbose=verbose)) - (mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         if verbose:
             print(A.T.dot(delta_l) + delta_s)
             print(A.dot(delta_x))
@@ -183,10 +190,7 @@ def burke_xu_lp(
         elif step == 2:
             rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem, use_sparse, steptype=2, verbose=verbose)
             factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, regularizer=regularizer, verbose=verbose)
-            if use_sparse is False:
-                pass
-            elif use_sparse is True:
-                delta_l = factor(rhs)
+            delta_l = factor(rhs)
             delta_s = -A.T.dot(delta_l)
             delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) - (sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
             if verbose:
@@ -212,6 +216,8 @@ def burke_xu_lp(
 
     if verbose:
 
+        print(A.toarray())
+        print(b)
         print(f"Die Genauigkeit beträgt {acc}.")
         print(f"Es wurde {nullstep} mal der Prediktor-Schritt abgelehnt.")
         print(f"Es wurden dafür {maxiter} Schritte durchgeführt. Es wurden {end_time - start_time} Sekunden benötigt.")

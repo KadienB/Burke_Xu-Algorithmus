@@ -287,9 +287,11 @@ def predictor_step(
             b = b + delta_b
     elif np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose)) > beta * mu:
         step = 0
-        if verbose: 
+        if verbose:
             print(f"Prädiktor-Schritt abgelehnt, da {np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose))} > {beta * mu}")
             print(f"War der vorherige Wert in der Umgebung? {np.linalg.norm(big_phi(x , a, mu, verbose=verbose))} <= {beta * mu}")
+            print(f"big_phi hat die Werte = {big_phi(x + delta_x, a + delta_a, mu, verbose=verbose)}")
+
     else:
         step = 2
         s = 1

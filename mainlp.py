@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import time
 import numpy as np
@@ -8,6 +9,15 @@ import methods as mt
 import burke_xu_lp as lp
 from memory_profiler import profile
 
+a = 7.86595704e-03 + -6.56230045e+00
+b = 3.27433802e-07 + 7.70551670e-03
+mu = 0.0002700143684102008
+print(f"a = {a}")
+print(f"b = {b}")
+print(f"(a+b) = {a + b}")
+print(np.sqrt(((a - b) ** 2) + (4 * (mu ** 2))))
+print((a + b) - np.sqrt(((a - b) ** 2) + (4 * (mu ** 2))))
+
 
 """ Einstellungen """
 
@@ -15,7 +25,7 @@ loop = False
 test_case = 0
 verbose = True
 acc = 1e-4
-maxiter = 100
+maxiter = 1000
 # np.set_printoptions(threshold=np.inf)
 # np.set_printoptions(precision=2, suppress=True, linewidth=400)
 
@@ -84,7 +94,7 @@ if test_case == 0:
     """ Laden der Daten """
 
     # Speichern der .npz Datei im Dictionary "data"
-    data=np.load("free_for_all_qpbenchmark-main/data/CZPROB.npz", allow_pickle=True)
+    data=np.load("free_for_all_qpbenchmark-main/data/SC50A.npz", allow_pickle=True)
 
     # Auslesen der Daten aus dem Dictionary
     c = data["c"]
@@ -125,15 +135,6 @@ if test_case == 0:
     print(np.dot(c, result2back))
 
 
-    """ Anwendung von burke_xu_lp auf die Standardform des Problems """
-
-    # Lösung mit burke_xu_lp in Standardform
-    # x = lp.burke_xu_lp(c=c_std, A_eq=A_std, b_eq=b_std, maxiter=100, acc=1e-4, verbose=verbose)
-    # result3 = mt.standardform_to_lp(x_std = x, transformations=transformations, initial_length=sol_length, verbose=verbose)
-    # print(result3)
-    # print(np.dot(c_std, result3))
-
-
     """ Anwendung von burke_xu_lp auf das Ausgangsproblem """
 
     # Lösung mit burke_xu_lp des eigentlichen Problems
@@ -172,7 +173,7 @@ elif test_case == 1:
     print("Optimaler Zielfunktionswert:", result.fun)
 
 # test verschiedener Box-Restriktionen
-if test_case == 2:
+elif test_case == 2:
 
     c = np.array([-1, -2, -3])
     A_eq = np.array([[-1, 14, 3]])
