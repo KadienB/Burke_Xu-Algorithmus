@@ -5,6 +5,7 @@ import numpy as np
 import scipy as sp
 import scipy.sparse as spa
 import sksparse.cholmod as cholmod
+from memory_profiler import profile
 
 def big_phi(
     a: np.ndarray,
@@ -85,7 +86,7 @@ def nabla_big_phi(
 
     # D = sqrt(inv(nabla_X)*nabla_S) (inv erstellen für lhs des Gleichungssystems A * X^(-1) * S * A^T = rhs)
     if arg == 0:
-        sqrt_term = np.sqrt((a**2) - (2 * a * b) + (b**2) + (4 * mu**2))
+        sqrt_term = np.sqrt((a - b) ** 2 + (4 * mu**2))
         nabla_x_inv = np.sqrt(sqrt_term / ((- a + b) + sqrt_term))
         nabla_s = np.sqrt(1 + ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2)))
         diag = nabla_x_inv * nabla_s
@@ -95,13 +96,13 @@ def nabla_big_phi(
         if inv == False:
             solution = 1 - ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
         else:
-            sqrt_term = np.sqrt((a**2) - (2 * a * b) + (b**2) + (4 * mu**2))
-            solution = sqrt_term / ((- a + b) + sqrt_term)
+            sqrt_term = np.sqrt((a - b) ** 2 + (4 * mu**2))
+            solution = sqrt_term / ((-a + b) + sqrt_term)
     elif arg == 2:
         if inv == False:
             solution = 1 + ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
         else:
-            sqrt_term = np.sqrt((a**2) - (2 * a * b) + (b**2) + (4 * mu**2))
+            sqrt_term = np.sqrt((a - b) ** 2 + (4 * mu**2))
             solution = sqrt_term / ((a - b) + sqrt_term)
     elif arg == 3: 
         solution = (-4 * mu) / np.sqrt((a - b) ** 2 + 4 * mu ** 2)
@@ -154,21 +155,19 @@ def linear_equation_formulate_rhs(
             D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
             # vorerst instabil
             if steptype == 1:
-                rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) + (-1 * mu * nabla_big_phi(x, a, mu, 3, verbose)))
+                rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) - (mu * nabla_big_phi(x, a, mu, 3, verbose)))
             elif steptype == 2:
-                rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) + (- 1 * mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
+                rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) - (mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
             else:
                 raise ValueError("Steptype must be 1 or 2.")
             
     elif use_sparse is True:
         if problem == 1:
-            # Vorerst instabil
             D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
-            # vorerst instabil
             if steptype == 1:
-                rhs = A.dot(spa.diags(D_x_inv)).dot((big_phi(x, a, mu, verbose)) + (-1 * mu * nabla_big_phi(x, a, mu, 3, verbose)))
+                rhs = A.dot(spa.diags(D_x_inv)).dot((big_phi(x, a, mu, verbose)) - (mu * nabla_big_phi(x, a, mu, 3, verbose)))
             elif steptype == 2:
-                rhs = A.dot(spa.diags(D_x_inv)).dot((big_phi(x, a, mu, verbose)) + (- 1 * mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
+                rhs = A.dot(spa.diags(D_x_inv)).dot((big_phi(x, a, mu, verbose)) - (mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
             else:
                 raise ValueError("Steptype must be 1 or 2.")
     
@@ -232,6 +231,7 @@ def cholesky_decomposition_lhs(
 
             if verbose:
                 start_time=time.time()
+            
 
             factor.cholesky_AAt_inplace(A.dot(D), beta=regularizer)
 
@@ -658,70 +658,34 @@ def standardform_to_lp(
 
     return x_std, slack
 
-def presolve_lp(
-    A_std: Union[np.ndarray, spa.csc_matrix],
-    b_std: np.ndarray,
-    c_std: np.ndarray,
-    verbose: bool = False,    
-)   -> Optional[np.ndarray]:
-    r"""Beschreibung
+# def presolve_lp(
+#     A_std: Union[np.ndarray, spa.csc_matrix],
+#     b_std: np.ndarray,
+#     c_std: np.ndarray,
+#     verbose: bool = False,    
+# )   -> Optional[np.ndarray]:
+#     r"""Beschreibung
 
-    Beschreibung
+#     Beschreibung
 
-    Parameters
-    ----------
-    a: 
-        in der Regel aktueller x-Vektor in |R^n.
-    b:
-        in der Regel aktueller y-Vektor in |R^n.
-    mu:
-        Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
-    verbose: bool
-        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
-    """
+#     Parameters
+#     ----------
+#     a: 
+#         in der Regel aktueller x-Vektor in |R^n.
+#     b:
+#         in der Regel aktueller y-Vektor in |R^n.
+#     mu:
+#         Glättungsparameter.
+#     arg:
+#         Integer, der aussagt nach welchem Argument abgeleitet wird.
+#     verbose: bool
+#         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
+#     """
     
-    if verbose:
-        print(f"Starting presolve_lp calculation...")
+#     if verbose:
+#         print(f"Starting presolve_lp calculation...")
 
-    return A_std, b_std, c_std
-
-def linear_equation_solve(
-    lu: Union[np.ndarray, spa.csc_matrix],
-    piv: np.ndarray,
-    rhs: np.ndarray,
-    overwriterhs: bool = False,
-    verbose: bool = False,    
-)   -> Optional[np.ndarray]:
-    r"""Beschreibung
-
-    Beschreibung
-
-    Parameters
-    ----------
-    a: 
-        in der Regel aktueller x-Vektor in |R^n.
-    b:
-        in der Regel aktueller y-Vektor in |R^n.
-    mu:
-        Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
-    verbose: bool
-        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
-    """
-    verbose = False
-    if verbose:
-        print(f"Starting linear_equation_solve calculation...")
-
-    # x = lu_solve((lu, piv), rhs, overwrite_b=overwriterhs)
-
-    if verbose:
-        print("Die Lösung x_delta lautet:")
-        print(x)
-
-    return # x
+#     return A_std, b_std, c_std
 
 # ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
 # ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #

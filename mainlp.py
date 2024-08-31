@@ -6,15 +6,17 @@ import scipy.sparse as spa
 import sksparse as skit
 import methods as mt
 import burke_xu_lp as lp
+from memory_profiler import profile
 
 
 """ Einstellungen """
 
-loop = True
-test_case = -1
-verbose = False
-acc = 1e-6
-maxiter = 1000
+loop = False
+test_case = 0
+verbose = True
+acc = 1e-4
+maxiter = 100
+# np.set_printoptions(threshold=np.inf)
 # np.set_printoptions(precision=2, suppress=True, linewidth=400)
 
 if loop == True:
@@ -64,7 +66,7 @@ if loop == True:
             
             # Datei öffnen und schreiben
             with open(output_file, "a") as file:
-                if status == "Erfolg":
+                if status == "Erfolg" or status == "CrashErfolg":
                     file.write(f"{npz_file:<30}{fun:<20.10f}{nullstep:<10}{maxiter:<10}{exec_time:<15.6f}{status:<10}{str(result)[:50]:<50}{str(slack)[:50]:<50}\n")
                 else:
                     file.write(f"{npz_file:<30}{'':<20}{'':<10}{'':<10}{'':<15}{status:<10}\n")
@@ -82,7 +84,7 @@ if test_case == 0:
     """ Laden der Daten """
 
     # Speichern der .npz Datei im Dictionary "data"
-    data=np.load("free_for_all_qpbenchmark-main/data/DEGEN3.npz", allow_pickle=True)
+    data=np.load("free_for_all_qpbenchmark-main/data/CZPROB.npz", allow_pickle=True)
 
     # Auslesen der Daten aus dem Dictionary
     c = data["c"]
@@ -135,13 +137,15 @@ if test_case == 0:
     """ Anwendung von burke_xu_lp auf das Ausgangsproblem """
 
     # Lösung mit burke_xu_lp des eigentlichen Problems
-    result3back, slack = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, verbose=verbose)
-    print(result3back)
-    print(np.dot(c, result3back))
+    result3back = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, verbose=verbose)
+    print(result3back[0])
+    print(np.dot(c, result3back[0]))
 
-
+    print("----------------------------------------")
     print(result1.x)
+    print(np.dot(c, result1.x))
     print(result2back)
+    print(np.dot(c, result2back))
 
 
     """ Selbstgeschrieben Testcases """

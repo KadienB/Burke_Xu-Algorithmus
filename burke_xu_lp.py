@@ -6,6 +6,8 @@ import scipy as sp
 import scipy.sparse as spa
 import sksparse as skit
 import methods as mt
+from memory_profiler import profile
+
 
 def burke_xu_lp(
     c: np.ndarray = None,
@@ -98,21 +100,18 @@ def burke_xu_lp(
         x = A.T.dot(x)
     l = np.zeros(A.shape[0])
     s = c
-    if verbose:
-        print(f"Ax - b = {np.linalg.norm(A.dot(x) - b)}")
-        print(f"A^T*lambda + s - c = {np.linalg.norm(A.T.dot(l) + s - c)}")
 
     # Externe Variablen
-    mu = np.sqrt(max(np.max(x), np.max(s),0))*1.1
+    mu = np.sqrt(np.max(np.maximum(0, x * s)))*1.1
     if np.linalg.norm(mt.big_phi(x, s, 0)) < acc:
         print(f"initval was solution")
         maxiter = 0
-    beta = 2*np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose)) / mu
+    beta = np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose)) / mu
     while beta < 2 * np.sqrt(len(x)):
         beta = beta * 1.1
     sigma = 0.5
     alpha_1 = 0.75
-    alpha_2 = 0.99
+    alpha_2 = 0.8
 
     if verbose:
         print(f"mu = {mu}")
@@ -120,6 +119,13 @@ def burke_xu_lp(
         print(f"sigma = {sigma}")
         print(f"alpha_1 = {alpha_1}")
         print(f"alpha_2 = {alpha_2}")
+
+        print(f"Ax - b = {np.linalg.norm(A.dot(x) - b)}")
+        print(f"A^T*lambda + s - c = {np.linalg.norm(A.T.dot(l) + s - c)}")
+        print(f"{np.linalg.norm(mt.big_phi(x, s, mu))} <= {beta * mu}")
+        print(f"{beta} > {2 * np.sqrt(len(x))}")
+        print(f"big_phi hat nur negative komponenten ist {np.all(mt.big_phi(x, s, mu) < 0)}")
+        print(f"{mt.big_phi(x, s, mu)}")
 
 
     """ Ausführung des Algorithmus """
@@ -146,13 +152,16 @@ def burke_xu_lp(
         print(f"-----------------------------------------------------------")
 
         # Prädiktor-Schritt
-        # lhs = mt.linear_equation_formulate_lhs(x, s, l, mu, A, problem=1, verbose=verbose)
         rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem, use_sparse, steptype=1, verbose=verbose)
         factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, regularizer=regularizer, verbose=verbose)
-        # cholesky, low = sp.linalg.cho_factor(lhs)
         delta_l = factor(rhs)
         delta_s = -A.T.dot(delta_l)
-        delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
+        delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) - (mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
+        if verbose:
+            print(A.T.dot(delta_l) + delta_s)
+            print(A.dot(delta_x))
+            print(np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=False, verbose=verbose)).dot(delta_x) + (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)).dot(delta_s)))
+            print(-(mt.big_phi(x, s, mu, verbose=verbose)) + (mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         x, s, l, mu, step = mt.predictor_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_1, beta, acc, verbose=verbose)
 
         # Korrektor-Schritt
@@ -162,21 +171,29 @@ def burke_xu_lp(
             rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem, use_sparse, steptype=2, verbose=verbose)
             delta_l = factor(rhs)
             delta_s = -A.T.dot(delta_l)
-            delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
+            delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) - (sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
+            if verbose:
+                print(A.T.dot(delta_l) + delta_s)
+                print(A.dot(delta_x))
+                print(np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=False, verbose=verbose)).dot(delta_x) + (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)).dot(delta_s)))
+                print(-(mt.big_phi(x, s, mu, verbose=verbose)) + (sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         elif step == 1:
             maxiter = k + 1
             break
         elif step == 2:
-            # lhs = mt.linear_equation_formulate_lhs(x, s, l, mu, A, problem=1, verbose=verbose)
             rhs = mt.linear_equation_formulate_rhs(x, s, l, mu, sigma, A, problem, use_sparse, steptype=2, verbose=verbose)
             factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, regularizer=regularizer, verbose=verbose)
-            # cholesky, low = sp.linalg.cho_factor(lhs)
             if use_sparse is False:
                 pass
             elif use_sparse is True:
                 delta_l = factor(rhs)
             delta_s = -A.T.dot(delta_l)
-            delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) + (-1 * sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
+            delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) - (sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
+            if verbose:
+                print(A.T.dot(delta_l) + delta_s)
+                print(A.dot(delta_x))
+                print(np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=False, verbose=verbose)).dot(delta_x) + (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)).dot(delta_s)))
+                print(-(mt.big_phi(x, s, mu, verbose=verbose)) + (sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         x, s, l, mu = mt.corrector_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_2, beta, sigma, verbose=True)
 
 
