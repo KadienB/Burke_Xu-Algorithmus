@@ -165,7 +165,7 @@ def linear_equation_formulate_rhs(
         if problem == 1:
             D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
             if steptype == 1:
-                rhs = A.dot(spa.diags(D_x_inv)).dot((big_phi(x, a, mu, verbose)) - (mu * nabla_big_phi(x, a, mu, 3, verbose)))
+                rhs = A.dot(spa.diags(D_x_inv).dot((big_phi(x, a, mu, verbose)) - (mu * nabla_big_phi(x, a, mu, 3, verbose))))
             elif steptype == 2:
                 rhs = A.dot(spa.diags(D_x_inv)).dot((big_phi(x, a, mu, verbose)) - (mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
             else:
@@ -223,7 +223,6 @@ def cholesky_decomposition_lhs(
             if verbose:
                 end_time = time.time()
                 print(f"Elapsed time: {end_time - start_time}")
-                print(factor)
 
         elif factor is not None:
 
@@ -290,7 +289,6 @@ def predictor_step(
         if verbose:
             print(f"Prädiktor-Schritt abgelehnt, da {np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose))} > {beta * mu}")
             print(f"War der vorherige Wert in der Umgebung? {np.linalg.norm(big_phi(x , a, mu, verbose=verbose))} <= {beta * mu}")
-            print(f"big_phi hat die Werte = {big_phi(x + delta_x, a + delta_a, mu, verbose=verbose)}")
 
     else:
         step = 2
@@ -487,7 +485,6 @@ def lp_to_standardform(
     """ Hinzufügen der Box Constraints """
     # Dictionary für Transformationen
     transformations = {}
-
     if bounds is not None and len(bounds) > 0:
 
         

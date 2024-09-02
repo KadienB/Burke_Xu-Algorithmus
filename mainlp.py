@@ -5,31 +5,25 @@ import numpy as np
 import scipy as sp
 import scipy.sparse as spa
 import sksparse as skit
+import pandas as pd
 import methods as mt
 import burke_xu_lp as lp
 from memory_profiler import profile
 
-a = 7.86595704e-03 + -6.56230045e+00
-b = 3.27433802e-07 + 7.70551670e-03
-mu = 0.0002700143684102008
-print(f"a = {a}")
-print(f"b = {b}")
-print(f"(a+b) = {a + b}")
-print(np.sqrt(((a - b) ** 2) + (4 * (mu ** 2))))
-print((a + b) - np.sqrt(((a - b) ** 2) + (4 * (mu ** 2))))
-
 
 """ Einstellungen """
 
-loop = False
-test_case = 0
-verbose = True
+loop = True
+test_case = -1
+verbose = False
 acc = 1e-4
-maxiter = 1000
+maxiter = 120
 # np.set_printoptions(threshold=np.inf)
 # np.set_printoptions(precision=2, suppress=True, linewidth=400)
 
+
 if loop == True:
+
     # Pfad zu den .npz-Dateien
     data_path = "/workspaces/Python/free_for_all_qpbenchmark-main/data"
     output_file = os.path.join(data_path, "testergebnisse.txt")
@@ -39,7 +33,7 @@ if loop == True:
 
     # Datei einmalig öffnen, Kopfzeile schreiben
     with open(output_file, "w") as file:
-        file.write(f"{'Datei':<30}{'Fun':<20}{'Nullstep':<10}{'MaxIter':<10}{'Time':<15}{'Status':<10}{'Result':<50}{'Slack':<50}\n")
+        file.write(f"{'Datei':<20}{'Fun':<15}{'Nullstep':<10}{'IterCount':<10}{'Time':<15}{'Status':<10}{'Result':<50}{'Slack':<50}\n")
         file.write("="*180 + "\n")
 
     # Ergebnisse in die Textdatei schreiben, nach jedem Testfall
@@ -54,32 +48,32 @@ if loop == True:
             b_ineq = data["b_ub"]
             bounds = np.squeeze(data["bounds"])
             
-            # Algorithmus 1
+            # Standardausführrung des Algorithmus
             start_time = time.time()
             try:
-                result, slack, fun, nullstep, maxiter, exec_time = lp.burke_xu_lp(
+                result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
                     c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
                     bounds=bounds, maxiter=maxiter, acc=acc, verbose=verbose
                 )
                 status = "Erfolg"
             except Exception as e:
-                # Algorithmus 2 bei Fehler
+                # Tritt ein Fehler auf: Ausführung des Algurithmus mit Regularisierung
                 try:
-                    result, slack, fun, nullstep, maxiter, exec_time = lp.burke_xu_lp(
+                    result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
                         c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
-                        bounds=bounds, maxiter=100, acc=acc, regularizer=(acc*acc), verbose=verbose
+                        bounds=bounds, maxiter=50, acc=1e-3, regularizer=1e-6, verbose=verbose
                     )
                     status = "CrashErfolg"
                 except Exception as e2:
                     status = "Fehler"
-                    result, slack, fun, nullstep, maxiter, exec_time = None, None, None, None, None, None
+                    result, slack, fun, nullstep, iter, exec_time = None, None, None, None, None, None
             
             # Datei öffnen und schreiben
             with open(output_file, "a") as file:
                 if status == "Erfolg" or status == "CrashErfolg":
-                    file.write(f"{npz_file:<30}{fun:<20.10f}{nullstep:<10}{maxiter:<10}{exec_time:<15.6f}{status:<10}{str(result)[:50]:<50}{str(slack)[:50]:<50}\n")
+                    file.write(f"{npz_file:<20}{fun:<15.4E}{nullstep:<10}{iter:<10}{exec_time:<15.6f}{status:<10}{str(result)[:50]:<50}{str(slack)[:50]:<50}\n")
                 else:
-                    file.write(f"{npz_file:<30}{'':<20}{'':<10}{'':<10}{'':<15}{status:<10}\n")
+                    file.write(f"{npz_file:<20}{'':<15}{'':<10}{'':<10}{'':<15}{status:<10}\n")
         
         except Exception as e:
             # Fehler beim Laden der Datei oder beim Ausführen des Algorithmus
@@ -94,7 +88,8 @@ if test_case == 0:
     """ Laden der Daten """
 
     # Speichern der .npz Datei im Dictionary "data"
-    data=np.load("free_for_all_qpbenchmark-main/data/SC50A.npz", allow_pickle=True)
+    filepath = "free_for_all_qpbenchmark-main/data/CZPROB.npz"
+    data=np.load(filepath, allow_pickle=True)
 
     # Auslesen der Daten aus dem Dictionary
     c = data["c"]
@@ -106,27 +101,25 @@ if test_case == 0:
 
     if verbose:
         print(f"c = {c}")
-        print(f"A_eq = {A_eq}")
+        print(f"A_eq = {A_eq.toarray()}")
         print(f"b_eq = {b_eq}")
-        print(f"A_ineq = {A_ineq}")
+        print(f"A_ineq = {A_ineq.toarray()}")
         print(f"b_ineq = {b_ineq}")
         print(f"bounds = {bounds}")
 
-    A_std, b_std, c_std, transformations, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
-    """ Anwendung von scipy.optimize.linprog auf das Ausgangsproblem """
-
-    # Lösung mit Linprog
+    A_std, b_std, c_std, transformations, sol_length, use_sparse = mt.lp_to_standardform(
+        c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
+    
+    
+    # Anwendung von scipy.optimize.linprog auf das Ausgangsproblem
     result1 = sp.optimize.linprog(c, A_ub=A_ineq, b_ub=b_ineq, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
     print(result1.x)
     print(np.dot(c, result1.x))
 
 
-    """ Anwendung von scipy.optimize.linprog auf die Standardform des Problems """
-
-    # Lösung mit Linprog in Standardform
+    # Anwendung von scipy.optimize.linprog auf die Standardform des Problems
     result2 = sp.optimize.linprog(c_std, A_eq = A_std, b_eq = b_std, method='highs')
     print(result2.x)
-    print(A_std @ result2.x - b_std)
     print(np.dot(c_std, result2.x))
 
     # Zurückkonvertierte Lösung
@@ -135,44 +128,134 @@ if test_case == 0:
     print(np.dot(c, result2back))
 
 
-    """ Anwendung von burke_xu_lp auf das Ausgangsproblem """
-
-    # Lösung mit burke_xu_lp des eigentlichen Problems
+    # Anwendung von burke_xu_lp auf das Ausgangsproblem
     result3back = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, verbose=verbose)
-    print(result3back[0])
-    print(np.dot(c, result3back[0]))
-
+    
+    print(f"A_eq hatte die Form")
+    print(f"{pd.DataFrame(A_eq.toarray())}")
+    print(f"b_eq hatte die Form {b_eq}.")
+    print(f"A_ineq hatte die Form")
+    print(f"{pd.DataFrame(A_ineq.toarray())}")
+    print(f"b_ineq hatte die Form {b_ineq}.")
+    print(f"bounds hat die Form {bounds}.")
+    print(f"Die in Standardform übeführte Matrix hatte die Form")
+    print(f"{pd.DataFrame(A_std.toarray())}")
+    print(f"MatrixName(Rang : Zeilen) = A_std({np.linalg.matrix_rank(A_std.toarray())} : {A_std.shape[0]}), A_eq({np.linalg.matrix_rank(A_eq.toarray())} : {A_eq.shape[0]}), A_ineq({np.linalg.matrix_rank(A_ineq.toarray())} : {A_ineq.shape[0]}).")
+    print(f"Der Lösungsvektor lautet {result3back[0]}.")
+    print(f"Der Minimale Funktionswert lautet {np.dot(c, result3back[0])} = {result3back[2]} mit Genauigkeit {acc:.0e} bei Datei {os.path.splitext(os.path.basename(filepath))[0]} aus Netlib.")
+    print(f"Es wurde {result3back[3]} mal der Nullstep verwendet, also der Prädiktor-Schritt abgelehnt.")
+    print(f"Insgesamt wurden {result3back[4]} Schritte verwendet, wobei {maxiter} die maximale Anzahl der Schritte war.")
+    print(f"Es wurden {result3back[5]} Sekunden benötigt.")
+    
     print("----------------------------------------")
+
+    print("Linprog auf das Ausgangsproblem ergab:")
     print(result1.x)
     print(np.dot(c, result1.x))
+    print("Linprog auf das Standardproblem ergab:")
     print(result2back)
     print(np.dot(c, result2back))
 
 
+    """ ---------------------------------------------------------------------------------------------------------------------- """
     """ Selbstgeschrieben Testcases """
-
-# test von burke_xu_lp für übersichtliche Probleme
+    """ ---------------------------------------------------------------------------------------------------------------------- """
 elif test_case == 1:
 
-    c = np.array([-1, -2, 2])
-    A_eq = np.array([[1, 1, 3],
-                    [1, 2, 4]])
-    b_eq = np.array([2, 3])
+    # selbstangelegte probleme: ['mehrotra_std', 'mehrotra', 'kanzow1',]
+    problem = 'mehrotra_std'
+    use_sparse = True
 
-    A_eq = spa.csc_matrix(A_eq)
+    if  problem == 'mehrotra_std':
+        c = np.array([5, 3, 3, 6, 0, 0, 0])
+        A_eq = np.array([[-6, 1, 2, 4, 1, 0, 0],
+                        [3, -2, -1, -5, 0, 1, 0],
+                        [-2, 1, 0, 2, 0, 0, 1]])
+        b_eq = np.array([14, -25, 14])
+        A_ineq = None
+        b_ineq = None
+        bounds = []
 
-    # Lösen des linearen Programms
-    result = sp.optimize.linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=(0, None), method='highs')
+    elif problem == 'mehrotra':
+        c = np.array([5, 3, 3, 6])
+        A_eq = None
+        b_eq = None
+        A_ineq = np.array([[-6, 1, 2, 4],
+                        [3, -2, -1, -5],
+                        [-2, 1, 0, 2]])
+        b_ineq = np.array([14, -25, 14])
+        bounds = []
 
-    my_result = lp.burke_xu_lp(c = c, A_eq = A_eq, b_eq = b_eq, maxiter=25, acc=1e-4, verbose=verbose)
-    print(f"my_result = {my_result}")
 
-    # Ausgabe der Ergebnisse
-    print("Lösungsstatus:", result.message)
-    print("Optimale Lösung x:", result.x)
-    print("Optimaler Zielfunktionswert:", result.fun)
+    if use_sparse:
+        if A_eq is not None:
+            A_eq = spa.csc_matrix(A_eq)
+        if A_ineq is not None:
+            A_ineq = spa.csc_matrix(A_ineq)
 
-# test verschiedener Box-Restriktionen
+
+        A_std, b_std, c_std, transformations, sol_length, use_sparse = mt.lp_to_standardform(
+        c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
+    
+    
+    # Anwendung von scipy.optimize.linprog auf das Ausgangsproblem
+    result1 = sp.optimize.linprog(c, A_ub=A_ineq, b_ub=b_ineq, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+    print(result1.x)
+    print(np.dot(c, result1.x))
+
+
+    # Anwendung von scipy.optimize.linprog auf die Standardform des Problems
+    result2 = sp.optimize.linprog(c_std, A_eq = A_std, b_eq = b_std, method='highs')
+    print(result2.x)
+    print(np.dot(c_std, result2.x))
+
+    # Zurückkonvertierte Lösung
+    result2back, slack = mt.standardform_to_lp(x_std=result2.x, transformations=transformations, initial_length=sol_length, verbose=verbose)
+    print(result2back)
+    print(np.dot(c, result2back))
+
+
+    # Anwendung von burke_xu_lp auf das Ausgangsproblem
+    result3back = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, verbose=verbose)
+
+    if A_eq is not None:
+        if use_sparse:
+            print(f"A_eq hatte die Form")
+            print(f"{pd.DataFrame(A_eq.toarray())}")
+        else:
+            print(f"A_eq hatte die Form")
+            print(f"{pd.DataFrame(A_eq)}")
+        print(f"b_eq hatte die Form {b_eq}.")
+    if A_ineq is not None:
+        if use_sparse:
+            print(f"A_ineq hatte die Form")
+            print(f"{pd.DataFrame(A_ineq.toarray())}")
+        else:
+            print(f"A_ineq hatte die Form")
+            print(f"{pd.DataFrame(A_ineq)}")
+        print(f"b_ineq hatte die Form {b_ineq}.")
+    print(f"bounds hat die Form {bounds}.")
+    print(f"Die in Standardform übeführte Matrix hatte die Form")
+    print(f"{pd.DataFrame(A_std.toarray())}")
+    print(f"Der Lösungsvektor lautet {result3back[0]}.")
+    print(f"Der Minimale Funktionswert lautet {np.dot(c, result3back[0])} = {result3back[2]} mit Genauigkeit {acc:.0e}.")
+    print(f"Es wurde {result3back[3]} mal der Nullstep verwendet, also der Prädiktor-Schritt abgelehnt.")
+    print(f"Insgesamt wurden {result3back[4]} Schritte verwendet, wobei {maxiter} die maximale Anzahl der Schritte war.")
+    print(f"Es wurden {result3back[5]} Sekunden benötigt.")
+    
+    print("----------------------------------------")
+
+    print("Linprog auf das Ausgangsproblem ergab:")
+    print(result1.x)
+    print(np.dot(c, result1.x))
+    print("Linprog auf das Standardproblem ergab:")
+    print(result2back)
+    print(np.dot(c, result2back))
+
+
+    """ ---------------------------------------------------------------------------------------------------------------------- """
+    """ Test verschiedener Box-Restriktionen """
+    """ ---------------------------------------------------------------------------------------------------------------------- """
 elif test_case == 2:
 
     c = np.array([-1, -2, -3])
@@ -198,7 +281,8 @@ elif test_case == 2:
     # A_eq = spa.csc_matrix(A_eq)
     # A_ineq = spa.csc_matrix(A_ineq)
 
-    A_std, b_std, c_std, transformations, sol_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=True)
+    A_std, b_std, c_std, transformations, sol_length, use_sparse = mt.lp_to_standardform(
+        c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=True)
 
     print(np.linalg.matrix_rank(A_std))
 
