@@ -6,6 +6,7 @@ import scipy as sp
 import scipy.sparse as spa
 import sksparse as skit
 import pandas as pd
+import csv
 import methods as mt
 import burke_xu_lp as lp
 from memory_profiler import profile
@@ -17,12 +18,25 @@ loop = True
 test_case = -1
 verbose = False
 acc = 1e-4
-maxiter = 120
+maxiter = 1000
+crmaxiter = 1000
+sigma = 0.5
+alpha_1 = 0.75
+alpha_2 = 0.8
 # np.set_printoptions(threshold=np.inf)
 # np.set_printoptions(precision=2, suppress=True, linewidth=400)
 
 
 if loop == True:
+
+    # CSV-Datei einlesen
+    netlib_fun = {}
+    with open('/workspaces/Python/free_for_all_qpbenchmark-main/data/NetlibFun.csv', 'r') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            filename = row['npz_file']
+            netlib_fun_value = float(row['NetlibFun'])
+            netlib_fun[filename] = netlib_fun_value
 
     # Pfad zu den .npz-Dateien
     data_path = "/workspaces/Python/free_for_all_qpbenchmark-main/data"
@@ -33,7 +47,14 @@ if loop == True:
 
     # Datei einmalig öffnen, Kopfzeile schreiben
     with open(output_file, "w") as file:
-        file.write(f"{'Datei':<20}{'Fun':<15}{'Nullstep':<10}{'IterCount':<10}{'Time':<15}{'Status':<10}{'Result':<50}{'Slack':<50}\n")
+        # Variablenwerte schreiben
+        file.write(f"acc = {acc:.4E}\n")
+        file.write(f"maxiter = {maxiter}\n")
+        file.write(f"sigma = {sigma}\n")
+        file.write(f"alpha1 = {alpha_1}\n")
+        file.write(f"alpha2 = {alpha_2}\n")
+        file.write("\n")  # Leerzeile zur Trennung
+        file.write(f"{'Datei':<20}{'NetlibFun':<15}{'Fun':<15}{'Nullstep':<10}{'Iter':<10}{'Time in s':<15}{'Status':<10}{'len(x)':<10}{'len(slack)':<10}\n")
         file.write("="*180 + "\n")
 
     # Ergebnisse in die Textdatei schreiben, nach jedem Testfall
@@ -53,32 +74,39 @@ if loop == True:
             try:
                 result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
                     c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
-                    bounds=bounds, maxiter=maxiter, acc=acc, verbose=verbose
+                    bounds=bounds, maxiter=maxiter, acc=acc, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
                 )
-                status = "Erfolg"
+                if iter == maxiter:
+                    status = "Maxiter"
+                else:
+                    status = "Erfolg"
             except Exception as e:
                 # Tritt ein Fehler auf: Ausführung des Algurithmus mit Regularisierung
                 try:
                     result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
                         c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
-                        bounds=bounds, maxiter=50, acc=1e-3, regularizer=1e-6, verbose=verbose
+                        bounds=bounds, maxiter=crmaxiter, acc=1e-3, regularizer=1e-6, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
                     )
-                    status = "CrashErfolg"
+                    if iter == crmaxiter:
+                        status = "CrMaxiter"
+                    else:
+                        status = "CrErfolg"
                 except Exception as e2:
                     status = "Fehler"
                     result, slack, fun, nullstep, iter, exec_time = None, None, None, None, None, None
-            
+            npz_file_name = npz_file.rstrip('.npz')
+            netlibfun = netlib_fun[npz_file_name]
             # Datei öffnen und schreiben
             with open(output_file, "a") as file:
-                if status == "Erfolg" or status == "CrashErfolg":
-                    file.write(f"{npz_file:<20}{fun:<15.4E}{nullstep:<10}{iter:<10}{exec_time:<15.6f}{status:<10}{str(result)[:50]:<50}{str(slack)[:50]:<50}\n")
+                if status == "Erfolg" or status == "Maxiter" or status == "CrErfolg" or status == "CrMaxiter":
+                    file.write(f"{npz_file_name:<20}{netlibfun:<15.4E}{fun:<15.4E}{nullstep:<10}{iter:<10}{exec_time:<15.6f}{status:<10}{len(result):<10}{len(slack):<10}\n")
                 else:
-                    file.write(f"{npz_file:<20}{'':<15}{'':<10}{'':<10}{'':<15}{status:<10}\n")
+                    file.write(f"{npz_file:<20}{'':<15}{'':<15}{'':<10}{'':<10}{'':<15}{status:<10}\n")
         
         except Exception as e:
             # Fehler beim Laden der Datei oder beim Ausführen des Algorithmus
             with open(output_file, "a") as file:
-                file.write(f"{npz_file:<30}{'':<20}{'':<10}{'':<10}{'':<15}{'Fehler':<10}\n")
+                file.write(f"{npz_file:<30}{'':<20}{'':<10}{'':<10}{'':<15}{'Fehler':<10}{'':<10}{'':<10}\n")
 
     print(f"Die Ergebnisse wurden in '{output_file}' gespeichert.")
 

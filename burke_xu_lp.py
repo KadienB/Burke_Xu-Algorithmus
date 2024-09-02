@@ -21,6 +21,9 @@ def burke_xu_lp(
     regularizer: Optional[float] = 0,
     scaling: Optional[int] = 0,
     initvals: Optional[np.ndarray] = None,
+    sigma: Optional[float] = None,
+    alpha_1: Optional[float] = None,
+    alpha_2: Optional[float] = None,
     verbose: bool = False,
     **kwargs,
 ) -> Optional[np.ndarray]:
@@ -112,9 +115,13 @@ def burke_xu_lp(
     beta = np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose)) / mu
     while beta < 2 * np.sqrt(len(x)):
         beta = beta * 1.1
-    sigma = 0.5
-    alpha_1 = 0.75
-    alpha_2 = 0.8
+
+    if sigma is None:
+        sigma = 0.5
+    if alpha_1 is None:
+        alpha_1 = 0.75
+    if alpha_2 is None:
+        alpha_2 = 0.8
 
     if verbose:
         print(f"mu = {mu}")
