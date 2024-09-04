@@ -14,12 +14,13 @@ from memory_profiler import profile
 
 """ Einstellungen """
 
-loop = True
+loop = 1
 test_case = -1
-verbose = False
+filepath = "free_for_all_qpbenchmark-main/data/SC50A.npz"
+verbose = True
 acc = 1e-4
-maxiter = 1000
-crmaxiter = 1000
+maxiter = 120
+crmaxiter = 50
 sigma = 0.5
 alpha_1 = 0.75
 alpha_2 = 0.8
@@ -27,7 +28,7 @@ alpha_2 = 0.8
 # np.set_printoptions(precision=2, suppress=True, linewidth=400)
 
 
-if loop == True:
+if loop == 1:
 
     # CSV-Datei einlesen
     netlib_fun = {}
@@ -116,7 +117,6 @@ if test_case == 0:
     """ Laden der Daten """
 
     # Speichern der .npz Datei im Dictionary "data"
-    filepath = "free_for_all_qpbenchmark-main/data/CZPROB.npz"
     data=np.load(filepath, allow_pickle=True)
 
     # Auslesen der Daten aus dem Dictionary
