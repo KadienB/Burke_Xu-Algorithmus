@@ -84,11 +84,13 @@ def nabla_big_phi(
         print(f"b = {b}")
         print(f"mu = {mu}")
 
+    bound = 1e-10
     # D = sqrt(inv(nabla_X)*nabla_S) (inv erstellen für lhs des Gleichungssystems A * X^(-1) * S * A^T = rhs)
     if arg == 0:
         sqrt_term = np.sqrt((a - b) ** 2 + (4 * mu**2))
-        nabla_x_inv = np.sqrt(sqrt_term / ((- a + b) + sqrt_term))
-        nabla_s = np.sqrt(1 + ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2)))
+        denominator_x_inv = np.maximum(- a + b + sqrt_term, bound)
+        nabla_x_inv = np.sqrt(sqrt_term / denominator_x_inv)
+        nabla_s = np.maximum(np.sqrt(1 + ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))), bound)
         diag = nabla_x_inv * nabla_s
         solution = spa.diags(diag, format='csc')
 
@@ -97,7 +99,8 @@ def nabla_big_phi(
             solution = 1 - ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
         else:
             sqrt_term = np.sqrt((a - b) ** 2 + (4 * mu**2))
-            solution = sqrt_term / ((-a + b) + sqrt_term)
+            denominator_x_inv = np.maximum(- a + b + sqrt_term, bound)
+            solution = sqrt_term / denominator_x_inv
     elif arg == 2:
         if inv == False:
             solution = 1 + ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
@@ -202,6 +205,8 @@ def cholesky_decomposition_lhs(
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
 
+    min_regularizer = 1e-2
+
     if verbose:
         print(f"Starting cholesky_decomposition_lhs...")
 
@@ -218,7 +223,23 @@ def cholesky_decomposition_lhs(
                 print("Es war noch kein Factor vorhanden.")
                 start_time=time.time()
 
-            factor = cholmod.cholesky_AAt(A, beta=regularizer)
+            try: 
+                factor = cholmod.cholesky_AAt(A, beta=0)
+            except:
+                while regularizer <= min_regularizer:
+                    try:
+                        # Versuche die Berechnung mit dem aktuellen Regularizer
+                        factor = cholmod.cholesky_AAt(A, beta=regularizer)
+                        if verbose:
+                            print(f"Erfolgreich mit Regularizer = {regularizer}")
+                        break  # Verlasse die Schleife, wenn erfolgreich
+                    except Exception as e:
+                        if verbose:
+                            print(f"Fehler bei der Berechnung mit beta={regularizer}: {e}")
+                        # Verringere den Regularizer um den Faktor 1/10
+                        regularizer *= 10
+                        if verbose:
+                            print(f"Versuche es mit regularizer = {regularizer}")
 
             if verbose:
                 end_time = time.time()
@@ -230,10 +251,24 @@ def cholesky_decomposition_lhs(
 
             if verbose:
                 start_time=time.time()
-            
 
-            factor.cholesky_AAt_inplace(A.dot(D), beta=regularizer)
-
+            try:
+                factor.cholesky_AAt_inplace(A.dot(D), beta=0)
+            except:
+                while regularizer <= min_regularizer:
+                    try:
+                        # Versuche die Berechnung mit dem aktuellen Regularizer
+                        factor.cholesky_AAt_inplace(A.dot(D), beta=regularizer)
+                        if verbose:
+                            print(f"Erfolgreich mit Regularizer = {regularizer}")
+                        break  # Verlasse die Schleife, wenn erfolgreich
+                    except Exception as e:
+                        if verbose:
+                            print(f"Fehler bei der Berechnung mit beta={regularizer}: {e}")
+                        # Verringere den Regularizer um den Faktor 1/10
+                        regularizer *= 10
+                        if verbose:
+                            print(f"Versuche es mit regularizer = {regularizer}")
 
             if verbose:
                 end_time = time.time()
@@ -289,8 +324,12 @@ def predictor_step(
         if verbose:
             print(f"Prädiktor-Schritt abgelehnt, da {np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose))} > {beta * mu}")
             print(f"War der vorherige Wert in der Umgebung? {np.linalg.norm(big_phi(x , a, mu, verbose=verbose))} <= {beta * mu}")
+            # print(f"Wie wäre die entgegengesetzte Richtung x? {np.linalg.norm(big_phi(x - delta_x, a + delta_a, mu, verbose=verbose))}")
+            # print(f"Wie wäre die entgegengesetzte Richtung s? {np.linalg.norm(big_phi(x + delta_x, a - delta_a, mu, verbose=verbose))}")
+            # print(f"Wie wäre die entgegengesetzte Richtung xs ? {np.linalg.norm(big_phi(x - delta_x, a - delta_a, mu, verbose=verbose))}")
 
-    else:
+
+    elif np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose)) <= beta * mu:
         step = 2
         s = 1
         while np.linalg.norm(big_phi(x + delta_x, a + delta_a, (alpha_1 ** s) * mu, verbose=verbose)) <= (alpha_1 ** s) * beta * mu:

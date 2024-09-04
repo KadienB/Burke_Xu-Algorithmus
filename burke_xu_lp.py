@@ -18,7 +18,7 @@ def burke_xu_lp(
     bounds: Optional[np.ndarray] = None,
     maxiter: Optional[int] = 10000,
     acc: Optional[float] = 1e-8,
-    regularizer: Optional[float] = 0,
+    regularizer: Optional[float] = None,
     scaling: Optional[int] = 0,
     initvals: Optional[np.ndarray] = None,
     sigma: Optional[float] = None,
@@ -81,17 +81,16 @@ def burke_xu_lp(
 
     """ Presolving des linearen Programms """
 
+
+
     """ Lineares Programm auf Normalform bringen """
 
     c_save = c
     A, b, c, transformations, initial_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
 
     """ Initialisierung des Algorithmus """
-
-    # Eventuelle Erstellung und Anwendung der Skalierungsmatrizen
-    S0 = None
-    S1 = None
-    S2 = None
+    if regularizer is None:
+        regularizer = acc
     problem = 1
 
     # Startwerte der Iterationsvariablen
@@ -101,8 +100,6 @@ def burke_xu_lp(
     elif use_sparse is True:
         x = factor(b)
         x = A.T.dot(x)
-    # l = np.zeros(A.shape[0])
-    # s = c
     l = factor(A.dot(c))
     s = c - A.T.dot(l)
 

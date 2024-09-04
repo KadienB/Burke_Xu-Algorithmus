@@ -10,22 +10,63 @@ import csv
 import methods as mt
 import burke_xu_lp as lp
 from memory_profiler import profile
+from scipy.optimize._linprog_util import (_presolve, _postsolve, _LPProblem, _autoscale, _unscale, _clean_inputs)
 
 
 """ Einstellungen """
 
-loop = 1
+loop = 0
 test_case = -1
-filepath = "free_for_all_qpbenchmark-main/data/SC50A.npz"
-verbose = True
-acc = 1e-4
-maxiter = 120
-crmaxiter = 50
-sigma = 0.5
-alpha_1 = 0.75
+filepath = "free_for_all_qpbenchmark-main/data/CZPROB.npz"
+verbose = False
+acc = 1e-6
+maxiter = 1000
+crmaxiter = 100
+sigma = 0.6
+alpha_1 = 0.8
 alpha_2 = 0.8
 # np.set_printoptions(threshold=np.inf)
 # np.set_printoptions(precision=2, suppress=True, linewidth=400)
+
+""" Laden der Daten """
+
+# Speichern der .npz Datei im Dictionary "data"
+data=np.load(filepath, allow_pickle=True)
+
+# Auslesen der Daten aus dem Dictionary
+c = data["c"]
+A_eq = spa.csc_matrix(data["A_eq"])
+b_eq = data["b_eq"]
+A_ineq = spa.csc_matrix(data["A_ub"])
+b_ineq = data["b_ub"]
+bounds = np.squeeze(data["bounds"])
+
+
+print(f"c = {c}")
+print(f"A_eq = {A_eq.toarray()}")
+print(f"b_eq = {b_eq}")
+print(f"A_ineq = {A_ineq.toarray()}")
+print(f"b_ineq = {b_ineq}")
+print(f"bounds = {bounds}")
+
+
+linprog = _LPProblem(c, A_ineq, b_ineq, A_eq, b_eq, bounds)
+linprog = _clean_inputs(linprog)
+linprog, c0, x, undo, complete, status, message = _presolve(linprog, True, None, acc)
+print(f"so liefs:")
+print(status)
+print(message)
+# result = lp.burke_xu_lp(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, verbose=True)
+print(f"len(c) = {len(c)} und jetzt = {len(linprog.c)}")
+print(f"Zeilen in A_ineq = {A_ineq.shape[0]} und jetzt {linprog.A_ub.shape[0]}")
+print(f"Spalten in A_ineq = {A_ineq.shape[1]} und jetzt {linprog.A_ub.shape[1]}")
+print(f"Zeilen in A_eq = {A_eq.shape[0]} und jetzt {linprog.A_eq.shape[0]}")
+print(f"Spalten in A_eq = {A_eq.shape[1]} und jetzt {linprog.A_eq.shape[1]}")
+print(f"Zeilen in bounds = {bounds.shape[0]} und jetzt {linprog.bounds.shape[0]}")
+print(f"len(b_ineq) = {len(b_ineq)} und jetzt = {len(linprog.b_ub)}")
+print(f"len(b_eq) = {len(b_eq)} und jetzt = {len(linprog.b_eq)}")
+
+result = lp.burke_xu_lp(linprog.c, A_eq=linprog.A_eq, b_eq=linprog.b_eq, A_ineq=linprog.A_ub, b_ineq=linprog.b_ub, bounds=linprog.bounds, maxiter=maxiter, acc=acc, verbose=True)
 
 
 if loop == 1:
@@ -77,6 +118,8 @@ if loop == 1:
                     c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
                     bounds=bounds, maxiter=maxiter, acc=acc, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
                 )
+                if np.isnan(fun):
+                    raise ValueError("Das Ergebnis 'fun' ist NaN.")
                 if iter == maxiter:
                     status = "Maxiter"
                 else:
@@ -86,7 +129,7 @@ if loop == 1:
                 try:
                     result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
                         c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
-                        bounds=bounds, maxiter=crmaxiter, acc=1e-3, regularizer=1e-6, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
+                        bounds=bounds, maxiter=crmaxiter, acc=1e-3, regularizer=1e-2, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
                     )
                     if iter == crmaxiter:
                         status = "CrMaxiter"
@@ -149,6 +192,7 @@ if test_case == 0:
     result2 = sp.optimize.linprog(c_std, A_eq = A_std, b_eq = b_std, method='highs')
     print(result2.x)
     print(np.dot(c_std, result2.x))
+    print("presolved A")
 
     # Zurückkonvertierte Lösung
     result2back, slack = mt.standardform_to_lp(x_std=result2.x, transformations=transformations, initial_length=sol_length, verbose=verbose)
@@ -157,7 +201,7 @@ if test_case == 0:
 
 
     # Anwendung von burke_xu_lp auf das Ausgangsproblem
-    result3back = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, verbose=verbose)
+    result3back = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, regularizer=None, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose)
     
     print(f"A_eq hatte die Form")
     print(f"{pd.DataFrame(A_eq.toarray())}")
