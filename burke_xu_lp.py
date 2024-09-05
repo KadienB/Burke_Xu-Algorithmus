@@ -1,11 +1,12 @@
 import os
-from typing import Optional, Iterator, Union
+from typing import Optional, Tuple, Union
 import time
 import numpy as np
 import scipy as sp
 import scipy.sparse as spa
 import sksparse as skit
 import methods as mt
+from scipy.optimize._linprog_util import (_presolve, _postsolve, _LPProblem, _autoscale, _unscale, _clean_inputs, _get_Abc)
 from memory_profiler import profile
 
 
@@ -19,6 +20,7 @@ def burke_xu_lp(
     maxiter: Optional[int] = 10000,
     acc: Optional[float] = 1e-8,
     regularizer: Optional[float] = None,
+    presolve: Optional[Tuple[bool, bool, str]] = (False, False, "some_string"),
     scaling: Optional[int] = 0,
     initvals: Optional[np.ndarray] = None,
     sigma: Optional[float] = None,
@@ -79,14 +81,42 @@ def burke_xu_lp(
     """
 
 
-    """ Presolving des linearen Programms """
-
-
-
-    """ Lineares Programm auf Normalform bringen """
+    """ Presolving des linearen Programms (mit _presolve von scipy)"""
 
     c_save = c
+    if presolve[0] is True:
+        linprog = _LPProblem(c, A_ineq, b_ineq, A_eq, b_eq, bounds)
+        if verbose:
+            print(f"Starting _presolve from scipy calculation...")
+        linprog = _clean_inputs(linprog)
+        linprog, c0, x, revstack, complete, status, message = _presolve(linprog, presolve[1], presolve[2], acc)
+        if verbose:
+            print(f"c0 = {c0}")
+            print(f"complete = {complete}")
+            print(f"status = {status}")
+            print(f"message = {message}")
+        c = linprog.c
+        A_eq = linprog.A_eq
+        b_eq = linprog.b_eq
+        A_ineq = linprog.A_ub
+        b_ineq = linprog.b_ub
+        bounds = linprog.bounds
+
+
+    """ Lineares Programm auf Normalform bringen (mit eigener Methode) """
+
     A, b, c, transformations, initial_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
+
+
+    """ Autoscaling des linearen Programms (mit _autoscale von scipy) """
+
+    if scaling == 1:
+        if verbose:
+            print(f"Starting _autoscale from scipy calculation...")
+        A, b, c, x0, C, b_scale = _autoscale(A, b, c, None)
+        if isinstance(A, spa.csr_matrix):
+            A = A.tocsc()
+
 
     """ Initialisierung des Algorithmus """
     if regularizer is None:
@@ -102,6 +132,8 @@ def burke_xu_lp(
         x = A.T.dot(x)
     l = factor(A.dot(c))
     s = c - A.T.dot(l)
+    # l = 0
+    # s = c
 
 
     # beta und mu bestimmen
@@ -118,7 +150,7 @@ def burke_xu_lp(
     if sigma is None:
         sigma = 0.5
     if alpha_1 is None:
-        alpha_1 = 0.75
+        alpha_1 = 0.9
     if alpha_2 is None:
         alpha_2 = 0.8
 
@@ -135,6 +167,11 @@ def burke_xu_lp(
         print(f"{beta} > {2 * np.sqrt(len(x))}")
         print(f"big_phi hat nur negative komponenten ist {np.all(mt.big_phi(x, s, mu) < 0)}")
         print(f"{mt.big_phi(x, s, mu)}")
+
+    """ Speicher aufräumen """
+    del A_eq, b_eq, A_ineq, b_ineq, bounds
+    if presolve[1] is True:
+        del linprog
 
 
     """ Ausführung des Algorithmus """
@@ -196,7 +233,7 @@ def burke_xu_lp(
                 print(A.dot(delta_x))
                 print(np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=False, verbose=verbose)).dot(delta_x) + (np.diag(mt.nabla_big_phi(x, s, mu, 2, verbose=verbose)).dot(delta_s)))
                 print(-(mt.big_phi(x, s, mu, verbose=verbose)) + (sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
-        x, s, l, mu = mt.corrector_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_2, beta, sigma, verbose=True)
+        x, s, l, mu = mt.corrector_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_2, beta, sigma, verbose=verbose)
 
 
     """ Ausgabe des Ergebnisses """
@@ -213,7 +250,6 @@ def burke_xu_lp(
 
 
     if verbose:
-
         print(A.toarray())
         print(b)
         print(f"Die Genauigkeit beträgt {acc}.")
@@ -224,17 +260,25 @@ def burke_xu_lp(
     """ Überprüfung und Rücktransformation des Ergebnisses """
 
     # Überprüfung der KKT-Bedingungen und Berechnung des minimalen Wertes
-    print("||A^T * lambda + s - c|| =")
-    print(np.linalg.norm(A.T.dot(l) + s - c))
-    print("||A * x - b|| =")
-    print(np.linalg.norm(A.dot(x) - b))
-    print("||x^T*s|| =")
-    print(np.linalg.norm(x.T @ s))
-    print("haben x oder s negative Werte?")
-    print(np.any(x < -acc) or np.any(s < -acc))
+    if verbose:
+        print("||A^T * lambda + s - c|| =")
+        print(np.linalg.norm(A.T.dot(l) + s - c))
+        print("||A * x - b|| =")
+        print(np.linalg.norm(A.dot(x) - b))
+        print("||x^T*s|| =")
+        print(np.linalg.norm(x.T @ s))
+        print("haben x oder s negative Werte?")
+        print(np.any(x < -acc) or np.any(s < -acc))
 
     # Rücktransformation
+    if scaling == 1:
+        x = _unscale(x, C, b_scale)
+
     result, slack = mt.standardform_to_lp(x, transformations, initial_length, verbose=verbose)
+
+    if presolve[0] is True:
+        for rev in reversed(revstack):
+            result = rev(result)
 
     fun = np.dot(c_save, result)
 

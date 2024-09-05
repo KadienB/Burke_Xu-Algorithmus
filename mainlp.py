@@ -10,64 +10,61 @@ import csv
 import methods as mt
 import burke_xu_lp as lp
 from memory_profiler import profile
-from scipy.optimize._linprog_util import (_presolve, _postsolve, _LPProblem, _autoscale, _unscale, _clean_inputs)
+from scipy.optimize._linprog_util import (_presolve, _postsolve, _LPProblem, _autoscale, _unscale, _clean_inputs, _get_Abc)
 
 
 """ Einstellungen """
 
-loop = 0
+loop = 1
 test_case = -1
-filepath = "free_for_all_qpbenchmark-main/data/CZPROB.npz"
+filepath = "free_for_all_qpbenchmark-main/data/D2Q06C.npz"
 verbose = False
-acc = 1e-6
+acc = 1e-4
 maxiter = 1000
 crmaxiter = 100
-sigma = 0.6
-alpha_1 = 0.8
+sigma = 0.5
+alpha_1 = 0.75
 alpha_2 = 0.8
-# np.set_printoptions(threshold=np.inf)
-# np.set_printoptions(precision=2, suppress=True, linewidth=400)
-
-""" Laden der Daten """
-
-# Speichern der .npz Datei im Dictionary "data"
-data=np.load(filepath, allow_pickle=True)
-
-# Auslesen der Daten aus dem Dictionary
-c = data["c"]
-A_eq = spa.csc_matrix(data["A_eq"])
-b_eq = data["b_eq"]
-A_ineq = spa.csc_matrix(data["A_ub"])
-b_ineq = data["b_ub"]
-bounds = np.squeeze(data["bounds"])
+scaling = 0
+presolve = (True, False, None)
 
 
-print(f"c = {c}")
-print(f"A_eq = {A_eq.toarray()}")
-print(f"b_eq = {b_eq}")
-print(f"A_ineq = {A_ineq.toarray()}")
-print(f"b_ineq = {b_ineq}")
-print(f"bounds = {bounds}")
+
+# # Laden der Daten
+# print("lade die daten")
+# data=np.load(filepath, allow_pickle=True)
+# c = data["c"]
+# A_eq = spa.csc_matrix(data["A_eq"])
+# b_eq = data["b_eq"]
+# A_ineq = spa.csc_matrix(data["A_ub"])
+# b_ineq = data["b_ub"]
+# bounds = np.squeeze(data["bounds"])
+# print("daten geladen")
+
+# result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
+#     c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
+#     bounds=bounds, maxiter=maxiter, acc=acc, presolve=presolve, scaling=scaling, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
+# )
+
+# print(f"A_eq hatte die Form")
+# print(f"{pd.DataFrame(A_eq.toarray())}")
+# print(f"b_eq hatte die Form {b_eq}.")
+# print(f"A_ineq hatte die Form")
+# print(f"{pd.DataFrame(A_ineq.toarray())}")
+# print(f"b_ineq hatte die Form {b_ineq}.")
+# print(f"bounds hat die Form {bounds}.")
+# print(f"Der Lösungsvektor lautet {result}.")
+# print(f"Der Minimale Funktionswert lautet {np.dot(c, result)} = {fun} mit Genauigkeit {acc:.0e} bei Datei {os.path.splitext(os.path.basename(filepath))[0]} aus Netlib.")
+# print(f"Es wurde {nullstep} mal der Nullstep verwendet, also der Prädiktor-Schritt abgelehnt.")
+# print(f"Insgesamt wurden {iter} Schritte verwendet, wobei {maxiter} die maximale Anzahl der Schritte war.")
+# print(f"Es wurden {exec_time} Sekunden benötigt.")
+
+# result1 = sp.optimize.linprog(c, A_ub=A_ineq, b_ub=b_ineq, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs', options={'presolve': True})
+# print(result1.x)
+# print(np.dot(c, result1.x))
 
 
-linprog = _LPProblem(c, A_ineq, b_ineq, A_eq, b_eq, bounds)
-linprog = _clean_inputs(linprog)
-linprog, c0, x, undo, complete, status, message = _presolve(linprog, True, None, acc)
-print(f"so liefs:")
-print(status)
-print(message)
-# result = lp.burke_xu_lp(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, verbose=True)
-print(f"len(c) = {len(c)} und jetzt = {len(linprog.c)}")
-print(f"Zeilen in A_ineq = {A_ineq.shape[0]} und jetzt {linprog.A_ub.shape[0]}")
-print(f"Spalten in A_ineq = {A_ineq.shape[1]} und jetzt {linprog.A_ub.shape[1]}")
-print(f"Zeilen in A_eq = {A_eq.shape[0]} und jetzt {linprog.A_eq.shape[0]}")
-print(f"Spalten in A_eq = {A_eq.shape[1]} und jetzt {linprog.A_eq.shape[1]}")
-print(f"Zeilen in bounds = {bounds.shape[0]} und jetzt {linprog.bounds.shape[0]}")
-print(f"len(b_ineq) = {len(b_ineq)} und jetzt = {len(linprog.b_ub)}")
-print(f"len(b_eq) = {len(b_eq)} und jetzt = {len(linprog.b_eq)}")
-
-result = lp.burke_xu_lp(linprog.c, A_eq=linprog.A_eq, b_eq=linprog.b_eq, A_ineq=linprog.A_ub, b_ineq=linprog.b_ub, bounds=linprog.bounds, maxiter=maxiter, acc=acc, verbose=True)
-
+""" Loop zum Durchlaufen der Netlib-Dateien"""
 
 if loop == 1:
 
@@ -101,6 +98,7 @@ if loop == 1:
 
     # Ergebnisse in die Textdatei schreiben, nach jedem Testfall
     for npz_file in npz_files:
+        presolve_m = presolve
         try:
             # Laden der Daten
             data = np.load(os.path.join(data_path, npz_file), allow_pickle=True)
@@ -110,13 +108,15 @@ if loop == 1:
             A_ineq = spa.csc_matrix(data["A_ub"])
             b_ineq = data["b_ub"]
             bounds = np.squeeze(data["bounds"])
-            
+
+            if npz_file.rstrip('.npz') == 'D2Q06C':
+                presolve_m = (True, False, None)
             # Standardausführrung des Algorithmus
             start_time = time.time()
             try:
                 result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
                     c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
-                    bounds=bounds, maxiter=maxiter, acc=acc, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
+                    bounds=bounds, maxiter=maxiter, acc=acc, presolve=presolve_m, scaling=scaling, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
                 )
                 if np.isnan(fun):
                     raise ValueError("Das Ergebnis 'fun' ist NaN.")
@@ -127,9 +127,10 @@ if loop == 1:
             except Exception as e:
                 # Tritt ein Fehler auf: Ausführung des Algurithmus mit Regularisierung
                 try:
+                    presolve_m = (True, False, None)
                     result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
                         c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
-                        bounds=bounds, maxiter=crmaxiter, acc=1e-3, regularizer=1e-2, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
+                        bounds=bounds, maxiter=crmaxiter, acc=1e-3, regularizer=1e-2, presolve=presolve, scaling=scaling, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
                     )
                     if iter == crmaxiter:
                         status = "CrMaxiter"

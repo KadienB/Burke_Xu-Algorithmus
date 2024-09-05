@@ -463,6 +463,11 @@ def lp_to_standardform(
         print(f"Starting lp_to_standardform calculation...")
 
     # Bestimmen, ob die Ausgabe als sparse matrix (csc) formatiert sein soll
+    if isinstance(A_eq, spa.csr_matrix):
+        A_eq = A_eq.tocsc()
+    if isinstance(A_ineq, spa.csr_matrix):
+        A_ineq = A_ineq.tocsc()
+
     if isinstance(A_eq, spa.csc_matrix) == isinstance(A_ineq, spa.csc_matrix):
         use_sparse = isinstance(A_eq, spa.csc_matrix)
     elif A_eq is None and A_ineq is not None:
@@ -532,14 +537,14 @@ def lp_to_standardform(
             lb, ub = bounds[i]
 
             # x <= np.inf
-            if ub is None:
+            if ub is None or np.isinf(ub):
 
                 # Fall 1: 0 <= x <= np.inf
                 if lb == 0:
                     pass
 
                 # Fall 2: -np.inf <= x <= np.inf
-                elif lb is None:
+                elif lb is None or np.isinf(lb):
 
                     # i-te Spalte negieren und rechts anfügen
                     if use_sparse is False:
@@ -589,7 +594,7 @@ def lp_to_standardform(
                     c_std = np.append(c_std, 0)
 
                 # Fall 5: -np.inf <= x <= ub    
-                elif lb is None:
+                elif lb is None or np.isinf(lb):
                     
                     # Vorzeichenwechsel der Spalte i
                     if use_sparse is False:
