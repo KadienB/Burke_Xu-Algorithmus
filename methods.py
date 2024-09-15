@@ -170,7 +170,7 @@ def linear_equation_formulate_rhs(
             if steptype == 1:
                 rhs = A.dot(spa.diags(D_x_inv).dot((big_phi(x, a, mu, verbose)) - (mu * nabla_big_phi(x, a, mu, 3, verbose))))
             elif steptype == 2:
-                rhs = A.dot(spa.diags(D_x_inv)).dot((big_phi(x, a, mu, verbose)) - (mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
+                rhs = A.dot(spa.diags(D_x_inv).dot((big_phi(x, a, mu, verbose)) - (mu * sigma * nabla_big_phi(x, a, mu, 3, verbose))))
             else:
                 raise ValueError("Steptype must be 1 or 2.")
     
@@ -384,7 +384,6 @@ def corrector_step(
     
     if verbose:
         print(f"Starting corrector_step calculation...")
-
     t = 0
     while np.linalg.norm(big_phi(x + ((alpha_2 ** t) * delta_x), a + ((alpha_2 ** t) * delta_a), (1 - (sigma * (alpha_2 ** t))) * mu, verbose=verbose)) > (1 - (sigma * (alpha_2 ** t))) * beta * mu:
         t += 1

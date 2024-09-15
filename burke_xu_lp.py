@@ -3,12 +3,16 @@ from typing import Optional, Tuple, Union
 import time
 import numpy as np
 import scipy as sp
+import pandas as pd
 import scipy.sparse as spa
 import sksparse as skit
 import methods as mt
 from scipy.optimize._linprog_util import (_presolve, _postsolve, _LPProblem, _autoscale, _unscale, _clean_inputs, _get_Abc)
 from memory_profiler import profile
 
+pd.set_option('display.max_rows', None)  # Display all rows
+pd.set_option('display.max_columns', None)  # Display all columns
+pd.set_option('display.max_colwidth', None)  # Display full content in columns
 
 def burke_xu_lp(
     c: np.ndarray = None,
@@ -130,20 +134,20 @@ def burke_xu_lp(
     elif use_sparse is True:
         x = factor(b)
         x = A.T.dot(x)
-    l = factor(A.dot(c))
-    s = c - A.T.dot(l)
-    # l = 0
+        l = factor(A.dot(c))
+        s = c - A.T.dot(l)
+    # l = np.zeros(A.shape[0])
     # s = c
 
 
     # beta und mu bestimmen
-    mu = np.sqrt(np.max(np.maximum(0, x * s)))*1.1
-    if np.linalg.norm(mt.big_phi(x, s, 0)) < acc:
-        print(f"initval was solution")
-        maxiter = 0
+    mu = np.sqrt(max(acc,(np.max(x * s))))
+    # mu = np.max(np.abs(mt.big_phi(x, s, 0, verbose)))
+    # if mu < np.sqrt(np.max(np.maximum(0, x * s))):
+    #     mu = np.sqrt(np.max(np.maximum(0, x * s))) + acc
     beta = np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose)) / mu
-    while beta < 2 * np.sqrt(len(x)):
-        beta = beta * 1.1
+    if beta < 2 * np.sqrt(len(x)):
+        beta = 2 * np.sqrt(len(x)) + acc
 
 
     # Externe Variablen
@@ -204,7 +208,8 @@ def burke_xu_lp(
         delta_s = -A.T.dot(delta_l)
         delta_x = (np.diag(-mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ ((np.diag(mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose)) @ delta_s) + (mt.big_phi(x, s, mu, verbose=verbose)) - (mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
         if verbose:
-            print(f"im Prädiktorschritt hat delta_x den Wert {delta_x}")
+            print(f"im Prädiktorschritt hat delta_x den Wert")
+            print(f"{pd.DataFrame(delta_x)}")
             print(f"big_phi hat die Werte = {mt.big_phi(x + delta_x, s + delta_s, mu, verbose=verbose)}")
         x, s, l, mu, step = mt.predictor_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_1, beta, acc, verbose=verbose)
 
@@ -217,7 +222,8 @@ def burke_xu_lp(
             delta_s = -A.T.dot(delta_l)
             delta_x = (-1 * np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))) @ (np.diag(mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose)) @ delta_s + (mt.big_phi(x, s, mu, verbose=verbose)) - (sigma * mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose)))
             if verbose:
-                print(f"im Nullstepkorrektorschritt hat delta_x den Wert {delta_x}")
+                print(f"im Nullstepkorrektorschritt hat delta_x den Wert")
+                print(f"{pd.DataFrame(delta_x)}")
                 print(f"big_phi hat die Werte = {mt.big_phi(x + delta_x, s + delta_s, mu, verbose=verbose)}")
         elif step == 1:
             maxiter = k + 1

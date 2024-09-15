@@ -16,14 +16,14 @@ from scipy.optimize._linprog_util import (_presolve, _postsolve, _LPProblem, _au
 """ Einstellungen """
 
 loop = 1
-test_case = -1
-filepath = "free_for_all_qpbenchmark-main/data/D2Q06C.npz"
+test_case = 0
+filepath = "free_for_all_qpbenchmark-main/data/SC50A.npz"
 verbose = False
 acc = 1e-4
 maxiter = 1000
 crmaxiter = 100
 sigma = 0.5
-alpha_1 = 0.75
+alpha_1 = 0.9
 alpha_2 = 0.8
 scaling = 0
 presolve = (True, False, None)
@@ -92,6 +92,8 @@ if loop == 1:
         file.write(f"sigma = {sigma}\n")
         file.write(f"alpha1 = {alpha_1}\n")
         file.write(f"alpha2 = {alpha_2}\n")
+        file.write(f"alpha2 = {presolve}\n")
+        file.write(f"alpha2 = {scaling}\n")
         file.write("\n")  # Leerzeile zur Trennung
         file.write(f"{'Datei':<20}{'NetlibFun':<15}{'Fun':<15}{'Nullstep':<10}{'Iter':<10}{'Time in s':<15}{'Status':<10}{'len(x)':<10}{'len(slack)':<10}\n")
         file.write("="*180 + "\n")
@@ -202,7 +204,7 @@ if test_case == 0:
 
 
     # Anwendung von burke_xu_lp auf das Ausgangsproblem
-    result3back = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, regularizer=None, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose)
+    result3back = lp.burke_xu_lp(c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, maxiter=maxiter, acc=acc, regularizer=None, presolve=presolve, scaling=scaling, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose)
     
     print(f"A_eq hatte die Form")
     print(f"{pd.DataFrame(A_eq.toarray())}")
