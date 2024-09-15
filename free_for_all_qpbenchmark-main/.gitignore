@@ -1,5 +1,6 @@
 *.pyc
 *.pyo
+*.npz
 .coverage
 .ropeproject
 .tox
