@@ -10,8 +10,9 @@ import methods as mt
 from scipy.optimize._linprog_util import (_presolve, _postsolve, _LPProblem, _autoscale, _unscale, _clean_inputs, _get_Abc)
 from memory_profiler import profile
 
-def burke_xu_lp(
+def burke_xu_qp(
     c: np.ndarray = None,
+    Q: Union[np.ndarray, sp.sparse.csc_matrix] = None,
     A_eq: Optional[Union[np.ndarray, sp.sparse.csc_matrix]] = None,
     b_eq: Optional[np.ndarray] = None,
     A_ineq: Optional[Union[np.ndarray, sp.sparse.csc_matrix]] = None,
@@ -83,45 +84,47 @@ def burke_xu_lp(
 
     """ Presolving des linearen Programms (mit _presolve von scipy)"""
 
-    c_save = c
-    if presolve[0] is True:
-        linprog = _LPProblem(c, A_ineq, b_ineq, A_eq, b_eq, bounds)
-        if verbose:
-            print(f"Starting _presolve from scipy calculation...")
-        linprog = _clean_inputs(linprog)
-        linprog, c0, x, revstack, complete, status, message = _presolve(linprog, presolve[1], presolve[2], acc)
-        if verbose:
-            print(f"c0 = {c0}")
-            print(f"complete = {complete}")
-            print(f"status = {status}")
-            print(f"message = {message}")
-        c = linprog.c
-        A_eq = linprog.A_eq
-        b_eq = linprog.b_eq
-        A_ineq = linprog.A_ub
-        b_ineq = linprog.b_ub
-        bounds = linprog.bounds
+    # c_save = c
+    # if presolve[0] is True:
+    #     linprog = _LPProblem(c, A_ineq, b_ineq, A_eq, b_eq, bounds)
+    #     if verbose:
+    #         print(f"Starting _presolve from scipy calculation...")
+    #     linprog = _clean_inputs(linprog)
+    #     linprog, c0, x, revstack, complete, status, message = _presolve(linprog, presolve[1], presolve[2], acc)
+    #     if verbose:
+    #         print(f"c0 = {c0}")
+    #         print(f"complete = {complete}")
+    #         print(f"status = {status}")
+    #         print(f"message = {message}")
+    #     c = linprog.c
+    #     A_eq = linprog.A_eq
+    #     b_eq = linprog.b_eq
+    #     A_ineq = linprog.A_ub
+    #     b_ineq = linprog.b_ub
+    #     bounds = linprog.bounds
+    
+    # entsprechende Anpassung von Q
 
 
-    """ Lineares Programm auf Normalform bringen (mit eigener Methode) """
+    """ Quadratisches Programm auf Normalform bringen (mit eigener Methode) """
 
     A, b, c, transformations, initial_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
 
 
-    """ Skalierung des linearen Programms (mit _autoscale von scipy) """
+    """ Autoscaling des linearen Programms (mit _autoscale von scipy) """
 
-    if scaling == 1:
-        if verbose:
-            print(f"Starting _autoscale from scipy calculation...")
-        A, b, c, x0, C, b_scale = _autoscale(A, b, c, None)
-        if isinstance(A, spa.csr_matrix):
-            A = A.tocsc()
+    # if scaling == 1:
+    #     if verbose:
+    #         print(f"Starting _autoscale from scipy calculation...")
+    #     A, b, c, x0, C, b_scale = _autoscale(A, b, c, None)
+    #     if isinstance(A, spa.csr_matrix):
+    #         A = A.tocsc()
 
 
     """ Initialisierung des Algorithmus """
     if regularizer is None:
         regularizer = acc
-    problem = 1
+    problem = 2
 
     # Startwerte der Iterationsvariablen
     factor = mt.cholesky_decomposition_lhs(A=A, problem=1, use_sparse=use_sparse, regularizer=regularizer, verbose=verbose)
@@ -130,10 +133,10 @@ def burke_xu_lp(
     elif use_sparse is True:
         x = factor(b)
         x = A.T.dot(x)
-        l = factor(A.dot(c))
-        s = c - A.T.dot(l)
-    # l = np.zeros(A.shape[0])
-    # s = c
+        # l = factor(A.dot(c))
+        # s = c - A.T.dot(l)
+    l = np.zeros(A.shape[0])
+    s = c + Q.dot(x)
 
 
     # beta und mu bestimmen
@@ -162,16 +165,18 @@ def burke_xu_lp(
         print(f"alpha_2 = {alpha_2}")
 
         print(f"Ax - b = {np.linalg.norm(A.dot(x) - b)}")
-        print(f"A^T*lambda + s - c = {np.linalg.norm(A.T.dot(l) + s - c)}")
+        print(f"A^T*lambda + s - Qx - c = {np.linalg.norm(A.T.dot(l) + s - Q.dot(x) - c)}")
+        print("||A^T * lambda + s - Qx - c|| =")
+        print(np.linalg.norm(A.T.dot(l) + s - Q.dot(x) - c))
         print(f"{np.linalg.norm(mt.big_phi(x, s, mu))} <= {beta * mu}")
         print(f"{beta} > {2 * np.sqrt(len(x))}")
         print(f"big_phi hat nur negative komponenten ist {np.all(mt.big_phi(x, s, mu) < 0)}")
         print(f"{mt.big_phi(x, s, mu)}")
 
     """ Speicher aufräumen """
-    del A_eq, b_eq, A_ineq, b_ineq, bounds
-    if presolve[1] is True:
-        del linprog
+    # del A_eq, b_eq, A_ineq, b_ineq, bounds
+    # if presolve[1] is True:
+    #     del linprog
 
 
     """ Ausführung des Algorithmus """
@@ -198,15 +203,25 @@ def burke_xu_lp(
         print(f"-----------------------------------------------------------")
 
         # Prädiktor-Schritt
-        D_x_inv = np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))
-        D_s = np.diag(mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose))
-        r_3 = mt.big_phi(x, s, mu, verbose) - (mu * mt.nabla_big_phi(x, s, mu, 3, verbose))
-        rhs = A.dot(D_x_inv.dot(r_3))
-        factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, regularizer=regularizer, verbose=verbose)
-        delta_l = factor(rhs)
-        delta_s = -A.T.dot(delta_l)
-        delta_x = -D_x_inv.dot(D_s.dot(delta_s) + r_3)
+        D_x = np.diag(mt.nabla_big_phi(x, s, mu, 1, False, verbose=verbose))
+        D_s_inv = np.diag(mt.nabla_big_phi(x, s, mu, 2, True, verbose=verbose))
+        r_3 = mt.big_phi(x, s, mu, verbose=verbose) - (mu * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose))
+        D = spa.csc_matrix(D_s_inv * D_x)
+        blockzeile1 = spa.hstack([-Q -D, A.T])
+        blockzeile2 = spa.hstack([A, spa.csc_matrix((A.shape[0], A.shape[0]))])
+        lhs = spa.vstack([blockzeile1, blockzeile2]).tocsc()
+        print(f"lhs hat die Form {lhs.toarray()}")
+        rhs = np.hstack([D_s_inv.dot(r_3), np.zeros(A.shape[0])])
+        print(f"rhs hat den Wert {rhs}")
+        solution = spa.linalg.spsolve(lhs, rhs)
+        n = A.shape[1]
+        delta_x = solution[:n]
+        delta_l = solution[n:]
+        delta_s = D_s_inv.dot(-r_3 - D_x.dot(delta_x))
         if verbose:
+            print("||A^T * (lambda + Delta lambda) + (s + delta s) - Q(x + delta x) - c|| =")
+            print(np.linalg.norm(A.T.dot(l + delta_l) + (s + delta_s) - Q.dot(x + delta_x) - c))
+            print(f"A(x + delta x) - b = {np.linalg.norm(A.dot(x + delta_x) - b)}")
             print(f"im Prädiktorschritt hat delta_x den Wert")
             print(f"{pd.DataFrame(delta_x)}")
             print(f"big_phi hat die Werte = {mt.big_phi(x + delta_x, s + delta_s, mu, verbose=verbose)}")
@@ -216,11 +231,13 @@ def burke_xu_lp(
         if step == 0:
             print("Nullstep has been taken.")
             nullstep += 1
-            r_3 = mt.big_phi(x, s, mu, verbose) - (mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose))
-            rhs = A.dot(D_x_inv.dot(r_3))
-            delta_l = factor(rhs)
-            delta_s = -A.T.dot(delta_l)
-            delta_x = -D_x_inv.dot(D_s.dot(delta_s) + r_3)
+            r_3 = mt.big_phi(x, s, mu, verbose=verbose) - (mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose))
+            rhs = np.hstack([D_s_inv.dot(r_3), np.zeros(A.shape[0])])
+            solution = spa.linalg.spsolve(lhs, rhs)
+            n = A.shape[1]
+            delta_x = solution[:n]
+            delta_l = solution[n:]
+            delta_s = D_s_inv.dot(-r_3 - D_x.dot(delta_x))
             if verbose:
                 print(f"im Nullstepkorrektorschritt hat delta_x den Wert")
                 print(f"{pd.DataFrame(delta_x)}")
@@ -229,14 +246,21 @@ def burke_xu_lp(
             maxiter = k + 1
             break
         elif step == 2:
-            D_x_inv = np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))
-            D_s = np.diag(mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose))
-            r_3 = mt.big_phi(x, s, mu, verbose) - (mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose))
-            rhs = A.dot(D_x_inv.dot(r_3))
-            factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, regularizer=regularizer, verbose=verbose)
-            delta_l = factor(rhs)
-            delta_s = -A.T.dot(delta_l)
-            delta_x = -D_x_inv.dot(D_s.dot(delta_s) + r_3)
+            D_x = np.diag(mt.nabla_big_phi(x, s, mu, 1, False, verbose=verbose))
+            D_s_inv = np.diag(mt.nabla_big_phi(x, s, mu, 2, True, verbose=verbose))
+            r_3 = mt.big_phi(x, s, mu, verbose=verbose) - (mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose=verbose))
+            D = spa.csc_matrix(D_s_inv * D_x)
+            blockzeile1 = spa.hstack([-Q -D, A.T])
+            blockzeile2 = spa.hstack([A, spa.csc_matrix((A.shape[0], A.shape[0]))])
+            lhs = spa.vstack([blockzeile1, blockzeile2]).tocsc()
+            print(f"lhs hat die Form {lhs.toarray()}")
+            rhs = np.hstack([D_s_inv.dot(r_3), np.zeros(A.shape[0])])
+            print(f"rhs hat den Wert {rhs}")
+            solution = spa.linalg.spsolve(lhs, rhs)
+            n = A.shape[1]
+            delta_x = solution[:n]
+            delta_l = solution[n:]
+            delta_s = D_s_inv.dot(-r_3 - D_x.dot(delta_x))
             if verbose:
                 print(A.T.dot(delta_l) + delta_s)
                 print(A.dot(delta_x))
@@ -248,10 +272,10 @@ def burke_xu_lp(
     """ Ausgabe des Ergebnisses """
 
     print(f"-----------------------------------------------------------")
-    print(f"x^{k} = {x}")
+    print(f"x^{k+1} = {x}")
     print(f"lambda^{k} = {l}")
-    print(f"s^{k} = {s}")
-    print(f"mu_{k} = {mu}")
+    print(f"s^{k+1} = {s}")
+    print(f"mu_{k+1} = {mu}")
     print(f"-----------------------------------------------------------")
 
     end_time = time.time()
@@ -279,16 +303,17 @@ def burke_xu_lp(
         print("haben x oder s negative Werte?")
         print(np.any(x < -acc) or np.any(s < -acc))
 
-    # Rücktransformation
-    if scaling == 1:
-        x = _unscale(x, C, b_scale)
+    # # Rücktransformation
+    # if scaling == 1:
+    #     x = _unscale(x, C, b_scale)
 
     result, slack = mt.standardform_to_lp(x, transformations, initial_length, verbose=verbose)
 
-    if presolve[0] is True:
-        for rev in reversed(revstack):
-            result = rev(result)
+    # if presolve[0] is True:
+    #     for rev in reversed(revstack):
+    #         result = rev(result)
 
-    fun = np.dot(c_save, result)
+    # fun = np.dot(c_save, result)
+    fun = None
 
     return result, slack, fun, nullstep, maxiter, end_time - start_time

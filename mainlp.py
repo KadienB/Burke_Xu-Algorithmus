@@ -9,60 +9,30 @@ import pandas as pd
 import csv
 import methods as mt
 import burke_xu_lp as lp
+import burke_xu_qp as qp
 from memory_profiler import profile
 from scipy.optimize._linprog_util import (_presolve, _postsolve, _LPProblem, _autoscale, _unscale, _clean_inputs, _get_Abc)
 
+""" Print-Optionen Pandas """
+
+pd.set_option('display.max_rows', None)  # Display all rows
+pd.set_option('display.max_columns', None)  # Display all columns
+pd.set_option('display.max_colwidth', None)  # Display full content in columns
 
 """ Einstellungen """
 
 loop = 1
-test_case = 0
+test_case = -1
 filepath = "free_for_all_qpbenchmark-main/data/SC50A.npz"
 verbose = False
 acc = 1e-4
 maxiter = 1000
 crmaxiter = 100
 sigma = 0.5
-alpha_1 = 0.9
+alpha_1 = 0.75
 alpha_2 = 0.8
 scaling = 0
 presolve = (True, False, None)
-
-
-
-# # Laden der Daten
-# print("lade die daten")
-# data=np.load(filepath, allow_pickle=True)
-# c = data["c"]
-# A_eq = spa.csc_matrix(data["A_eq"])
-# b_eq = data["b_eq"]
-# A_ineq = spa.csc_matrix(data["A_ub"])
-# b_ineq = data["b_ub"]
-# bounds = np.squeeze(data["bounds"])
-# print("daten geladen")
-
-# result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
-#     c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
-#     bounds=bounds, maxiter=maxiter, acc=acc, presolve=presolve, scaling=scaling, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
-# )
-
-# print(f"A_eq hatte die Form")
-# print(f"{pd.DataFrame(A_eq.toarray())}")
-# print(f"b_eq hatte die Form {b_eq}.")
-# print(f"A_ineq hatte die Form")
-# print(f"{pd.DataFrame(A_ineq.toarray())}")
-# print(f"b_ineq hatte die Form {b_ineq}.")
-# print(f"bounds hat die Form {bounds}.")
-# print(f"Der Lösungsvektor lautet {result}.")
-# print(f"Der Minimale Funktionswert lautet {np.dot(c, result)} = {fun} mit Genauigkeit {acc:.0e} bei Datei {os.path.splitext(os.path.basename(filepath))[0]} aus Netlib.")
-# print(f"Es wurde {nullstep} mal der Nullstep verwendet, also der Prädiktor-Schritt abgelehnt.")
-# print(f"Insgesamt wurden {iter} Schritte verwendet, wobei {maxiter} die maximale Anzahl der Schritte war.")
-# print(f"Es wurden {exec_time} Sekunden benötigt.")
-
-# result1 = sp.optimize.linprog(c, A_ub=A_ineq, b_ub=b_ineq, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs', options={'presolve': True})
-# print(result1.x)
-# print(np.dot(c, result1.x))
-
 
 """ Loop zum Durchlaufen der Netlib-Dateien"""
 
@@ -92,8 +62,8 @@ if loop == 1:
         file.write(f"sigma = {sigma}\n")
         file.write(f"alpha1 = {alpha_1}\n")
         file.write(f"alpha2 = {alpha_2}\n")
-        file.write(f"alpha2 = {presolve}\n")
-        file.write(f"alpha2 = {scaling}\n")
+        file.write(f"presolve = {presolve}\n")
+        file.write(f"scaling = {scaling}\n")
         file.write("\n")  # Leerzeile zur Trennung
         file.write(f"{'Datei':<20}{'NetlibFun':<15}{'Fun':<15}{'Nullstep':<10}{'Iter':<10}{'Time in s':<15}{'Status':<10}{'len(x)':<10}{'len(slack)':<10}\n")
         file.write("="*180 + "\n")

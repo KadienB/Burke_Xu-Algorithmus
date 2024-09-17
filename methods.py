@@ -7,6 +7,7 @@ import scipy.sparse as spa
 import sksparse.cholmod as cholmod
 from memory_profiler import profile
 
+
 def big_phi(
     a: np.ndarray,
     b: np.ndarray,
