@@ -182,7 +182,6 @@ def cholesky_decomposition_lhs(
     a: Optional[np.ndarray] = None,
     mu: Optional[float] = None,
     A: Union[np.ndarray, spa.csc_matrix] = None,
-    problem: int = 0,
     use_sparse: bool = False,
     factor: Optional[cholmod.Factor] = None,
     regularizer: Optional[float] = 0,

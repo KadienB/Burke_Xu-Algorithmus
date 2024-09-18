@@ -32,7 +32,7 @@ sigma = 0.5
 alpha_1 = 0.75
 alpha_2 = 0.8
 scaling = 0
-presolve = (True, False, None)
+presolve = (True, True, None)
 
 """ Loop zum Durchlaufen der Netlib-Dateien"""
 
@@ -71,6 +71,7 @@ if loop == 1:
     # Ergebnisse in die Textdatei schreiben, nach jedem Testfall
     for npz_file in npz_files:
         presolve_m = presolve
+        scaling_m = scaling
         try:
             # Laden der Daten
             data = np.load(os.path.join(data_path, npz_file), allow_pickle=True)
@@ -80,15 +81,27 @@ if loop == 1:
             A_ineq = spa.csc_matrix(data["A_ub"])
             b_ineq = data["b_ub"]
             bounds = np.squeeze(data["bounds"])
-
-            if npz_file.rstrip('.npz') == 'D2Q06C':
+            # bei diesen LPs besondere Einstellung beim Preconditioning
+            special_cases_red = ['D2Q06C', 'BANDM', 'BORE3D', 'FFFFF800', 'GREENBEA', 'GREENBEB', 'GROW15', 'GROW22', 'MAROS-R7', 'MAROS', 'PEROLD', 'PILOTNOV', 'SCSD8', 'WOODW', 'QAP15', 'QAP12']
+            if npz_file.rstrip('.npz') in special_cases_red:
                 presolve_m = (True, False, None)
+            special_cases_scaling = ['SC205', 'TUFF']
+            if npz_file.rstrip('.npz') in special_cases_scaling:
+                presolve_m = (False, False, None)
+                scaling_m = 1
+            special_cases_scaling2 = ['PILOT', 'PILOT87', 'PEROLD', 'STOCFOR2', 'STOCFOR3', 'WOOD1P', 'MODSZK1']
+            if npz_file.rstrip('.npz') in special_cases_scaling2:
+                presolve_m = (True, False, None)
+                scaling_m = 1
+            no_presolve = ['PILOT-JA']
+            if npz_file.rstrip('.npz') in no_presolve:
+                presolve_m = (False, False, None)
             # Standardausführrung des Algorithmus
             start_time = time.time()
             try:
                 result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
                     c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
-                    bounds=bounds, maxiter=maxiter, acc=acc, presolve=presolve_m, scaling=scaling, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
+                    bounds=bounds, maxiter=maxiter, acc=acc, presolve=presolve_m, scaling=scaling_m, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
                 )
                 if np.isnan(fun):
                     raise ValueError("Das Ergebnis 'fun' ist NaN.")
@@ -97,12 +110,12 @@ if loop == 1:
                 else:
                     status = "Erfolg"
             except Exception as e:
-                # Tritt ein Fehler auf: Ausführung des Algurithmus mit Regularisierung
+                # Tritt ein Fehler auf: Ausführung des Algorithmus mit Regularisierung
                 try:
                     presolve_m = (True, False, None)
                     result, slack, fun, nullstep, iter, exec_time = lp.burke_xu_lp(
                         c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, 
-                        bounds=bounds, maxiter=crmaxiter, acc=1e-3, regularizer=1e-2, presolve=presolve, scaling=scaling, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
+                        bounds=bounds, maxiter=crmaxiter, acc=1e-3, regularizer=1e-2, presolve=presolve_m, scaling=scaling, sigma=sigma, alpha_1=alpha_1, alpha_2=alpha_2, verbose=verbose
                     )
                     if iter == crmaxiter:
                         status = "CrMaxiter"

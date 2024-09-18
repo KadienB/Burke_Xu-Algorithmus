@@ -120,14 +120,14 @@ def burke_xu_lp(
 
     """ Initialisierung des Algorithmus """
     if regularizer is None:
-        regularizer = acc
+        regularizer = acc*acc
     problem = 1
 
     # Startwerte der Iterationsvariablen
-    factor = mt.cholesky_decomposition_lhs(A=A, problem=1, use_sparse=use_sparse, regularizer=regularizer, verbose=verbose)
     if use_sparse is False:
         pass
     elif use_sparse is True:
+        factor = mt.cholesky_decomposition_lhs(A=A, use_sparse=use_sparse, regularizer=regularizer, verbose=verbose)
         x = factor(b)
         x = A.T.dot(x)
         l = factor(A.dot(c))
@@ -202,8 +202,11 @@ def burke_xu_lp(
         D_s = np.diag(mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose))
         r_3 = mt.big_phi(x, s, mu, verbose) - (mu * mt.nabla_big_phi(x, s, mu, 3, verbose))
         rhs = A.dot(D_x_inv.dot(r_3))
-        factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, regularizer=regularizer, verbose=verbose)
-        delta_l = factor(rhs)
+        if use_sparse is False:
+            pass
+        else:
+            factor = mt.cholesky_decomposition_lhs(x, s, mu, A, use_sparse, factor, regularizer=regularizer, verbose=verbose)
+            delta_l = factor(rhs)
         delta_s = -A.T.dot(delta_l)
         delta_x = -D_x_inv.dot(D_s.dot(delta_s) + r_3)
         if verbose:
@@ -218,7 +221,10 @@ def burke_xu_lp(
             nullstep += 1
             r_3 = mt.big_phi(x, s, mu, verbose) - (mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose))
             rhs = A.dot(D_x_inv.dot(r_3))
-            delta_l = factor(rhs)
+            if use_sparse is False:
+                pass
+            else:
+                delta_l = factor(rhs)
             delta_s = -A.T.dot(delta_l)
             delta_x = -D_x_inv.dot(D_s.dot(delta_s) + r_3)
             if verbose:
@@ -233,8 +239,11 @@ def burke_xu_lp(
             D_s = np.diag(mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose))
             r_3 = mt.big_phi(x, s, mu, verbose) - (mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose))
             rhs = A.dot(D_x_inv.dot(r_3))
-            factor = mt.cholesky_decomposition_lhs(x, s, mu, A, problem, use_sparse, factor, regularizer=regularizer, verbose=verbose)
-            delta_l = factor(rhs)
+            if use_sparse is False:
+                pass
+            else:
+                factor = mt.cholesky_decomposition_lhs(x, s, mu, A, use_sparse, factor, regularizer=regularizer, verbose=verbose)
+                delta_l = factor(rhs)
             delta_s = -A.T.dot(delta_l)
             delta_x = -D_x_inv.dot(D_s.dot(delta_s) + r_3)
             if verbose:
