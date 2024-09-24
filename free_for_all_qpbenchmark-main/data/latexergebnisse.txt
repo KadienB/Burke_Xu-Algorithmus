@@ -1,0 +1,7 @@
+GANGES &7021 &\text{-1.0956e+05} &\text{5.55e-08} &\text{1.21e-05} &14 &346 &7.76 &Erfolg \\ 
+WOOD1P &70216 &\text{1.4429e+00} &\text{6.64e-05} &\text{8.64e-05} &0 &20 &1.52 &Erfolg \\ 
+WOODW &37478 &\text{1.3045e+00} &\text{1.74e-06} &\text{3.25e-06} &0 &85 &28.63 &Erfolg \\ 
+GANGES &7021 &\text{-1.0956e+05} &\text{5.55e-08} &\text{1.21e-05} &14 &346 &8.20 &Erfolg \\ 
+WOOD1P &70216 &\text{1.4429e+00} &\text{6.64e-05} &\text{8.64e-05} &0 &20 &1.51 &Erfolg \\ 
+GANGES &7021 &\text{-1.0956e+05} &\text{5.55e-08} &\text{1.21e-05} &14 &346 &8.24 &Erfolg \\ 
+WOOD1P &70216 &\text{1.4429e+00} &\text{6.64e-05} &\text{8.64e-05} &0 &20 &1.59 &Erfolg \\ 

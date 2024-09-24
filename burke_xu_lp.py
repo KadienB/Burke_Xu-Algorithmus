@@ -137,13 +137,14 @@ def burke_xu_lp(
 
 
     # beta und mu bestimmen
-    mu = np.sqrt(max(acc,(np.max(x * s))))
+    # mu = np.sqrt(max(acc,(np.max(x * s))))
+    mu = np.sqrt(acc + np.max(np.where((x > 0) & (s > 0), x * s, 0)))
     # mu = np.max(np.abs(mt.big_phi(x, s, 0, verbose)))
     # if mu < np.sqrt(np.max(np.maximum(0, x * s))):
     #     mu = np.sqrt(np.max(np.maximum(0, x * s))) + acc
     beta = np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose)) / mu
-    if beta <= 2 * np.sqrt(len(x)):
-        beta = 2 * np.sqrt(len(x)) + acc
+    # if beta <= 2 * np.sqrt(len(x)):
+    #     beta = 2 * np.sqrt(len(x)) + acc
 
 
     # Externe Variablen
@@ -274,6 +275,7 @@ def burke_xu_lp(
         print(f"Es wurde {nullstep} mal der Prediktor-Schritt abgelehnt.")
         print(f"Es wurden dafür {maxiter} Schritte durchgeführt. Es wurden {end_time - start_time} Sekunden benötigt.")
 
+    phi = np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose), ord=np.inf)
 
     """ Überprüfung und Rücktransformation des Ergebnisses """
 
@@ -299,5 +301,6 @@ def burke_xu_lp(
             result = rev(result)
 
     fun = np.dot(c_save, result)
+    funoutput = (fun, mu, phi)
 
-    return result, slack, fun, nullstep, maxiter, end_time - start_time
+    return result, slack, funoutput, nullstep, maxiter, end_time - start_time
