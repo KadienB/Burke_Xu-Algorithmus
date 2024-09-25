@@ -1,11 +1,8 @@
-import os
-from typing import Optional, Iterator, Union, Tuple
+from typing import Optional, Union, Tuple
 import time
 import numpy as np
-import scipy as sp
 import scipy.sparse as spa
 import sksparse.cholmod as cholmod
-from memory_profiler import profile
 
 
 def big_phi(
@@ -26,7 +23,7 @@ def big_phi(
     a: 
         in der Regel aktueller x-Vektor in |R^n.
     b:
-        in der Regel aktueller y-Vektor in |R^n.
+        in der Regel aktueller s-Vektor in |R^n.
     mu:
         Glättungsparameter mu > 0.
     verbose: bool
@@ -39,6 +36,7 @@ def big_phi(
         print(f"b = {b}")
         print(f"mu = {mu}")
 
+    # Brechnung von phi(a,b,mu)
     solution = (a + b) - np.sqrt(((a - b) ** 2) + (4 * (mu ** 2)))
 
     if verbose:
@@ -54,7 +52,7 @@ def nabla_big_phi(
     inv: bool = False,
     verbose: bool = False,
 )   -> Optional[np.ndarray]:
-    r"""Berechnung der Teilblockmatrizen von nabla(x,y)F wie in Remark 4. und 5. beschrieben unter der Verwendung von
+    r"""Berechnung der Teilblockmatrizen von nabla(x,y)F wie in [Anmerkung (Effizientes Lösen der linearen Gleichungssysteme)] beschrieben unter der Verwendung von
 
     partial phi / partial a = 1 - (a - b) / sqrt((a - b)^2 + 4mu^2).
 
@@ -64,17 +62,20 @@ def nabla_big_phi(
 
     Gespeichert wird jeweils in Vektorform, da es sich um vollbeschriebene Diagonalmatrizen handelt.
 
-    
-    Parameters
+    Robustes Berechnen der Matrix (D_x_inv^(-1)D_s)^(1/2) als sparse Diagonalmatrix zur effizienten Verwendung mit scikit-sparse_AAt.
+
+    Parameter
     ----------
     a: 
         in der Regel aktueller x-Vektor in |R^n.
     b:
-        in der Regel aktueller y-Vektor in |R^n.
+        in der Regel aktueller s-Vektor in |R^n.
     mu:
         Glättungsparameter mu > 0.
     arg:
         Integer, der aussagt nach welchem Argument abgeleitet wird.
+    inv:
+        Boolean Variable um eine effizient und stabil berechnete Inverse zu erzeugen.
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
@@ -86,7 +87,8 @@ def nabla_big_phi(
         print(f"mu = {mu}")
 
     bound = 1e-10
-    # D = sqrt(inv(nabla_X)*nabla_S) (inv erstellen für lhs des Gleichungssystems A * X^(-1) * S * A^T = rhs)
+
+    # Berechnung von (D_x_inv^(-1)D_s)^(1/2)
     if arg == 0:
         sqrt_term = np.sqrt((a - b) ** 2 + (4 * mu**2))
         denominator_x_inv = np.maximum(- a + b + sqrt_term, bound)
@@ -96,18 +98,23 @@ def nabla_big_phi(
         solution = spa.diags(diag, format='csc')
 
     elif arg == 1:
+        # Berechnung von D_x
         if inv == False:
             solution = 1 - ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
+        # Berechnung von D_x_inv
         else:
             sqrt_term = np.sqrt((a - b) ** 2 + (4 * mu**2))
             denominator_x_inv = np.maximum(- a + b + sqrt_term, bound)
             solution = sqrt_term / denominator_x_inv
     elif arg == 2:
+        # Berechnung von D_s
         if inv == False:
             solution = 1 + ((a - b) / np.sqrt((a - b) ** 2 + 4 * mu ** 2))
+        # Berechnung von D_s_inv (wird quasi nicht verwendet, nur der Vollständigkeit wegen)
         else:
             sqrt_term = np.sqrt((a - b) ** 2 + (4 * mu**2))
             solution = sqrt_term / ((a - b) + sqrt_term)
+        # Berechnung von D_mu
     elif arg == 3: 
         solution = (-4 * mu) / np.sqrt((a - b) ** 2 + 4 * mu ** 2)
     else: 
@@ -117,65 +124,6 @@ def nabla_big_phi(
         print(f"nabla_big_phi result = {solution}")
 
     return solution
-
-def linear_equation_formulate_rhs(
-    x: np.ndarray,
-    a: np.ndarray,
-    b: Optional[np.ndarray],
-    mu: float,
-    sigma: Optional[float],
-    A: Union[np.ndarray, spa.csc_matrix],
-    problem: int,
-    use_sparse = False,
-    steptype: int = 0,
-    verbose: bool = False,
-)   -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
-    r"""Formulierung der rechten Seite des Gleichungssystem, das in jedem Prädiktor- und Korrektorschritt gelöst werden muss.
-    Je nachdem ob es sich um LP, QP oder LCP handelt angepasst, für genauere Herleitung siehe Thesis Kapitel 3.
-
-    
-    Parameters
-    ----------
-    x: 
-        in der Regel aktueller Iterationsvektor x in |R^n.
-    a:
-        in der Regel aktueller Iterationsvektor (s bei LP / y bei LCP) in |R^n.
-    b:
-        wenn vorhande, aktueller Iterationsvektor (lambda bei LP), normalerweise in |R^m.
-    mu:
-        Glättungsparameter mu > 0.
-    A:
-        Matrix (A in LP, M in LCP) von LCP(q,M) in |R^mxn.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
-    verbose: bool
-        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
-    """
-
-
-    if use_sparse is False:
-        if problem == 1:
-            # Vorerst instabil
-            D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
-            # vorerst instabil
-            if steptype == 1:
-                rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) - (mu * nabla_big_phi(x, a, mu, 3, verbose)))
-            elif steptype == 2:
-                rhs = A @ np.diag(D_x_inv) @ ((big_phi(x, a, mu, verbose)) - (mu * sigma * nabla_big_phi(x, a, mu, 3, verbose)))
-            else:
-                raise ValueError("Steptype must be 1 or 2.")
-            
-    elif use_sparse is True:
-        if problem == 1:
-            D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
-            if steptype == 1:
-                rhs = A.dot(spa.diags(D_x_inv).dot((big_phi(x, a, mu, verbose)) - (mu * nabla_big_phi(x, a, mu, 3, verbose))))
-            elif steptype == 2:
-                rhs = A.dot(spa.diags(D_x_inv).dot((big_phi(x, a, mu, verbose)) - (mu * sigma * nabla_big_phi(x, a, mu, 3, verbose))))
-            else:
-                raise ValueError("Steptype must be 1 or 2.")
-    
-    return rhs
 
 def cholesky_decomposition_lhs(
     x: Optional[np.ndarray] = None,
@@ -189,23 +137,29 @@ def cholesky_decomposition_lhs(
 )   -> Optional[Tuple[np.ndarray, np.ndarray]]:
     r"""Beschreibung
 
-    Beschreibung
+    Effiziente und robuste Implementation von sci-kit sparse für unseren Algorithmus.
 
-    Parameters
+    Parameter
     ----------
-    a: 
+    x: 
         in der Regel aktueller x-Vektor in |R^n.
-    b:
-        in der Regel aktueller y-Vektor in |R^n.
+    a:
+        in der Regel aktueller s-Vektor in |R^n.
     mu:
         Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    A:
+        Matrix A für das Gleichungssystem A(D_x_inv D_s)A^T.
+    use_sparse: 
+        Boolean Variable, die aussagt, ob es sich um csc_matrix handelt. (Da dense Matrizen nie Effizient implementiert wurden mittlerweile obsolet.)
+    factor:
+        Vorherige Cholesky-Zerlegung, die über Informationen zur Struktur von A und damit von A((D_x_inv D_s)^(1/2)) verfügt.
+    regularizer :
+        Vorgegebener Vorfaktor der auf das Gleichungssystem addierten Einheitsmatrix. Standardmäßig wird reguralizer = acc^2 verwendet.
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
 
-    min_regularizer = 1e-2
+    max_regularizer = 1e-2
 
     if verbose:
         print(f"Starting cholesky_decomposition_lhs...")
@@ -226,7 +180,7 @@ def cholesky_decomposition_lhs(
             try: 
                 factor = cholmod.cholesky_AAt(A, beta=0)
             except:
-                while regularizer <= min_regularizer:
+                while regularizer <= max_regularizer:
                     try:
                         # Versuche die Berechnung mit dem aktuellen Regularizer
                         factor = cholmod.cholesky_AAt(A, beta=regularizer)
@@ -236,7 +190,7 @@ def cholesky_decomposition_lhs(
                     except Exception as e:
                         if verbose:
                             print(f"Fehler bei der Berechnung mit beta={regularizer}: {e}")
-                        # Verringere den Regularizer um den Faktor 1/10
+                        # Erhöhe den Regularizer um den Faktor 10
                         regularizer *= 10
                         if verbose:
                             print(f"Versuche es mit regularizer = {regularizer}")
@@ -255,7 +209,7 @@ def cholesky_decomposition_lhs(
             try:
                 factor.cholesky_AAt_inplace(A.dot(D), beta=0)
             except:
-                while regularizer <= min_regularizer:
+                while regularizer <= max_regularizer:
                     try:
                         # Versuche die Berechnung mit dem aktuellen Regularizer
                         factor.cholesky_AAt_inplace(A.dot(D), beta=regularizer)
@@ -289,22 +243,34 @@ def predictor_step(
     alpha_1: float,
     beta: float,
     acc: float,
-    verbose: bool = False,    
+    verbose: bool = False,
 )   -> Optional[np.ndarray]:
     r"""Beschreibung
 
-    Beschreibung
+    Backtracking-Routine des Prädiktor-Schritts inklusive Abbruchkriterium. Die resultierenden Iterationsvektoren werden zurückgegeben.
 
-    Parameters
+    Parameter
     ----------
-    a: 
+    x: 
         in der Regel aktueller x-Vektor in |R^n.
+    a:
+        in der Regel aktueller s-Vektor in |R^n.
     b:
-        in der Regel aktueller y-Vektor in |R^n.
+        in der Regel aktueller lambda-Vektor in |R^m.
+    delta_x
+        in der Regel aktuelle Schritteweite Delta_x in |R^n.
+    delta_a
+        in der Regel aktuelle Schritteweite Delta_s in |R^n.
+    delta_b
+        in der Regel aktuelle Schritteweite Delta_lambda in |R^m.
     mu:
         Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    alpha_1:
+        Externer Parameter für die Backtracking Routine.
+    beta:
+        Externer Parameter für die Beschränkung der Umgebung.
+    acc:
+        Gewünschte Genauigkeit für das Abbruch-Kriterium.
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
@@ -312,23 +278,22 @@ def predictor_step(
     if verbose:
         print(f"Starting predictor_step calculation...")
 
-    # if np.linalg.norm(np.minimum(x + delta_x,y + delta_y)) < acc:
+    # Überprüfung, ob der Prädiktor-Schritt das LP schon löst
     if np.linalg.norm(big_phi(x + delta_x, a + delta_a, 0)) < acc:
         step = 1
         x = x + delta_x
         a = a + delta_a
         if b is not None:
             b = b + delta_b
+
+    # Überprüfung, ob der Prädiktor-Schritt in der gewünschten Umgebung endet
     elif np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose)) > beta * mu:
         step = 0
         if verbose:
             print(f"Prädiktor-Schritt abgelehnt, da {np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose))} > {beta * mu}")
             print(f"War der vorherige Wert in der Umgebung? {np.linalg.norm(big_phi(x , a, mu, verbose=verbose))} <= {beta * mu}")
-            # print(f"Wie wäre die entgegengesetzte Richtung x? {np.linalg.norm(big_phi(x - delta_x, a + delta_a, mu, verbose=verbose))}")
-            # print(f"Wie wäre die entgegengesetzte Richtung s? {np.linalg.norm(big_phi(x + delta_x, a - delta_a, mu, verbose=verbose))}")
-            # print(f"Wie wäre die entgegengesetzte Richtung xs ? {np.linalg.norm(big_phi(x - delta_x, a - delta_a, mu, verbose=verbose))}")
 
-
+    # Backtracking Routine, um zu schauen wie weit mu reduziert werden kann
     elif np.linalg.norm(big_phi(x + delta_x, a + delta_a, mu, verbose=verbose)) <= beta * mu:
         step = 2
         s = 1
@@ -366,24 +331,37 @@ def corrector_step(
 )   -> Optional[np.ndarray]:
     r"""Beschreibung
 
-    Beschreibung
+    Backtracking-Routine des Korrektor-Schritts. Die resultierenden Iterationsvektoren werden zurückgegeben.
 
-    Parameters
+    Parameter
     ----------
-    a: 
+    x: 
         in der Regel aktueller x-Vektor in |R^n.
+    a:
+        in der Regel aktueller s-Vektor in |R^n.
     b:
-        in der Regel aktueller y-Vektor in |R^n.
+        in der Regel aktueller lambda-Vektor in |R^m.
+    delta_x
+        in der Regel aktuelle Schritteweite Delta_x in |R^n.
+    delta_a
+        in der Regel aktuelle Schritteweite Delta_s in |R^n.
+    delta_b
+        in der Regel aktuelle Schritteweite Delta_lambda in |R^m.
     mu:
         Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    alpha_2:
+        Externer Parameter für die Backtracking Routine.
+    beta:
+        Externer Parameter für die Beschränkung der Umgebung.
+    sigma:
+        Externer Zentrierungsparameter.
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
     
     if verbose:
         print(f"Starting corrector_step calculation...")
+    # Backtracking Routine des Korrektor-Schritts zur Bestimmung der Schrittweite
     t = 0
     while np.linalg.norm(big_phi(x + ((alpha_2 ** t) * delta_x), a + ((alpha_2 ** t) * delta_a), (1 - (sigma * (alpha_2 ** t))) * mu, verbose=verbose)) > (1 - (sigma * (alpha_2 ** t))) * beta * mu:
         t += 1
@@ -431,7 +409,7 @@ def lp_to_standardform(
 
     lb =< x =< ub
 
-    Parameters
+    Parameter
     ----------
     c :
         Vektor in |R^n.
@@ -480,9 +458,14 @@ def lp_to_standardform(
     
     # Sicherstellung des richtigen Datentyps
     if use_sparse is False:
-        A_eq = A_eq.astype(np.float64)
-        A_ineq = A_ineq.astype(np.float64)
-    b_eq = b_eq.astype(np.float64)
+        if A_eq is not None:
+            A_eq = A_eq.astype(np.float64)
+        if A_ineq is not None:
+            A_ineq = A_ineq.astype(np.float64)
+    if b_eq is not None:
+        b_eq = b_eq.astype(np.float64)
+    if b_ineq is not None:
+        b_ineq = b_ineq.astype(np.float64)
     c = c.astype(np.float64)
 
     # Anzahl der Variablen
@@ -530,7 +513,6 @@ def lp_to_standardform(
     transformations = {}
     if bounds is not None and len(bounds) > 0:
 
-        
         # Iteration über das bounds 2-Dim np.ndarray mit Fallunterscheidung
         for i in range(initial_length):
             lb, ub = bounds[i]
@@ -658,16 +640,14 @@ def standardform_to_lp(
 
     Die Methode wandelt den Lösungsvektor des Linearen Programms in Standardform in den Lösungsvektor des Linearen Programms in Ausgangsform um.
 
-    Parameters
+    Parameter
     ----------
-    a: 
-        in der Regel aktueller x-Vektor in |R^n.
-    b:
-        in der Regel aktueller y-Vektor in |R^n.
-    mu:
-        Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
+    x_std: 
+        Lösungsvektor des Linearen Programms nach Preprocessing.
+    transformations:
+        Dictionary mit den, beim auf Standardform bringen, gemachten Transformationen von A_std.
+    initial_length:
+        Länge des Lösungsvektors des Ausgangsform.
     verbose: bool
         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
@@ -678,15 +658,15 @@ def standardform_to_lp(
     # transformations dictionary durchgehen und nach Fallunterscheidung Umwandlungen rückgängig machen
     for key in transformations.keys():
 
-        # Fall 2: Wir ziehen x_i_- von x_i_+ ab.
+        # Fall 2:
         if transformations[key][0] == 2:
             x_std[key] -= x_std[transformations[key][1]]
 
-        # Fall 3: Wir addieren lb auf x', da x' = x - lb gilt.
+        # Fall 3:
         elif transformations[key][0] == 3:
             x_std[key] += transformations[key][1]
 
-        # Fall 5: Wir addieren lb auf x', da x' = - x - lb gilt. Dann erhalten wir durch 
+        # Fall 5:
         elif transformations[key][0] == 5:
             x_std[key] += transformations[key][1]
             x_std[key] = -x_std[key]
@@ -699,234 +679,3 @@ def standardform_to_lp(
     x_std = x_std[:initial_length]
 
     return x_std, slack
-
-# def presolve_lp(
-#     A_std: Union[np.ndarray, spa.csc_matrix],
-#     b_std: np.ndarray,
-#     c_std: np.ndarray,
-#     verbose: bool = False,    
-# )   -> Optional[np.ndarray]:
-#     r"""Beschreibung
-
-#     Beschreibung
-
-#     Parameters
-#     ----------
-#     a: 
-#         in der Regel aktueller x-Vektor in |R^n.
-#     b:
-#         in der Regel aktueller y-Vektor in |R^n.
-#     mu:
-#         Glättungsparameter.
-#     arg:
-#         Integer, der aussagt nach welchem Argument abgeleitet wird.
-#     verbose: bool
-#         Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
-#     """
-    
-#     if verbose:
-#         print(f"Starting presolve_lp calculation...")
-
-#     return A_std, b_std, c_std
-
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-"""                                  Ab hier die Methoden die für die Implementierung des Algorithmus für LCPs benutzt wurden und nicht mehr verwendet werden.                                          """
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-# ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- #
-
-def linear_equation_formulate_lhs(
-    x: np.ndarray,
-    a: np.ndarray,
-    b: Optional[np.ndarray],
-    mu: float,
-    A: Union[np.ndarray, spa.csc_matrix],
-    problem: int,
-    verbose: bool = False,    
-)   -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
-    r"""Formulierung der linken Seite des Gleichungssystem, das in jedem Prädiktor- und Korrektorschritt gelöst werden muss.
-    Je nachdem ob es sich um LP, QP oder LCP handelt angepasst, für genauere Herleitung siehe Thesis Kapitel 3.
-
-    
-    Parameters
-    ----------
-    x: 
-        in der Regel aktueller Iterationsvektor x in |R^n.
-    a:
-        in der Regel aktueller Iterationsvektor (s bei LP / y bei LCP) in |R^n.
-    b:
-        wenn vorhande, aktueller Iterationsvektor (lambda bei LP), normalerweise in |R^m.
-    mu:
-        Glättungsparameter mu > 0.
-    A:
-        Matrix (A in LP, M in LCP) von LCP(q,M) in |R^mxn.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
-    verbose: bool
-        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
-    """
-
-    if problem == 1:
-        # Vorerst instabil
-        D_s = nabla_big_phi(x, a, mu, 2, verbose=verbose)
-        # vorerst instabil 
-        D_x_inv = nabla_big_phi(x, a, mu, 1, inv=True, verbose=verbose)
-        lhs = A @ np.diag(D_x_inv) @ np.diag(D_s) @ A.T
-
-
-    if verbose:
-        print(f"Die Koeffizientenmatrix hat die Form: lhs =")
-        print(f"{lhs}")
-    
-    return lhs
-
-def linear_equation_formulate(
-    x: np.ndarray,
-    y: np.ndarray,
-    mu: float,
-    sigma: float,
-    M: Union[np.ndarray, spa.csc_matrix],
-    arg: int,
-    verbose: bool = False,    
-)   -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    r"""Formulierung des zu lösenden LGS unter Berücksichtigung von Remarks 4 und 5 und unter Verwendung des Ansatzes des Schurkomplements für lineare Gleichungssysteme mit Blockmatrizen.
-
-    Es genügt also in jedem Schritt das LGS
-
-    (nabla_x(PHI) + nabla_y(PHI) @ M) @ delta_x = -PHI + mu * (sigma) * nabla_mu(PHI)
-
-    zu lösen.
-
-    Parameters
-    ----------
-    a: 
-        in der Regel aktueller x-Vektor in |R^(n+m).
-    b:
-        in der Regel aktueller y-Vektor in |R^(n+m).
-    mu:
-        Glättungsparameter.
-    sigma:
-        Zentrierungparameter.
-    M:
-        Matrix M von LCP(q,M) in |R^((n+m)x(n+m)).
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
-    verbose: bool
-        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
-    """
-
-    if verbose:
-        print(f"Starting linear_equation_formulate calculation for argument {arg}...")
-
-    if verbose:
-        if np.all(np.linalg.eigvalsh(np.diag(nabla_big_phi(x, y, mu, 1, verbose))) > 0):
-            print("Die Matrix D_x ist positiv definit.")
-        else:
-            print("Die Matrix D_x ist nicht positiv definit.")
-            print("x sah wie folgt aus:")
-            print(f"{x}")
-            print("y sah wie folgt aus:")
-            print(f"{y}")
-            print(f"und mu = {mu}")
-            for s in range (0, len(nabla_big_phi(x, y, mu, 1, verbose))):
-                if nabla_big_phi(x, y, mu, 1, verbose)[s] == 0:
-                    print(f"{nabla_big_phi(x, y, mu, 1, verbose)[s]} = 1 - ({x[s]} - {y[s]}) / {np.sqrt((x[s]-y[s])**2 + 4*mu**2)} in Zeile {s}")
-    if verbose:
-        if np.all(np.linalg.eigvalsh(np.diag(nabla_big_phi(x, y, mu, 2, verbose))) > 0):
-            print("Die Matrix D_y ist positiv definit.")
-        else:
-            print("Die Matrix D_y ist nicht positiv definit.")
-            print(f"{np.diag(nabla_big_phi(x, y, mu, 2, verbose))}")
-
-    lhs = np.diag(nabla_big_phi(x, y, mu, 1, verbose)) + np.diag(nabla_big_phi(x, y, mu, 2, verbose)) @ M
-    if arg == 1:
-        rhs = -1 * big_phi(x, y, mu, verbose) + mu * nabla_big_phi(x, y, mu, 3, verbose)
-    elif arg == 2:
-        rhs = -1 * big_phi(x, y, mu, verbose) + (mu * sigma * nabla_big_phi(x, y, mu, 3, verbose))
-    else: 
-        raise ValueError("Argument must be 1 or 2.")
-
-    if verbose:
-        print("Das LGS hat die Form:")
-        print(f"{lhs}(delta_x) = {rhs}^T")
-
-    return lhs, rhs
-
-
-
-def linear_equation_factorize(
-    lhs: Union[np.ndarray, spa.csc_matrix],
-    overwritelhs: bool = False,
-    verbose: bool = False,    
-)   -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    r"""Beschreibung
-
-    Beschreibung
-
-    Parameters
-    ----------
-    a: 
-        in der Regel aktueller x-Vektor in |R^n.
-    b:
-        in der Regel aktueller y-Vektor in |R^n.
-    mu:
-        Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
-    verbose: bool
-        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
-    """
-    verbose = False
-    if verbose:
-        print(f"Starting linear_equation_factorize calculation...")
-
-    # lu, piv = lu_factor(lhs, overwrite_a=overwritelhs)
-
-    if verbose:
-        print("Die Faktorisierung hat die Form:")
-        print(f"{lu}")
-
-    return # lu, piv
-
-def linear_equation_solve(
-    lu: Union[np.ndarray, spa.csc_matrix],
-    piv: np.ndarray,
-    rhs: np.ndarray,
-    overwriterhs: bool = False,
-    verbose: bool = False,    
-)   -> Optional[np.ndarray]:
-    r"""Beschreibung
-
-    Beschreibung
-
-    Parameters
-    ----------
-    a: 
-        in der Regel aktueller x-Vektor in |R^n.
-    b:
-        in der Regel aktueller y-Vektor in |R^n.
-    mu:
-        Glättungsparameter.
-    arg:
-        Integer, der aussagt nach welchem Argument abgeleitet wird.
-    verbose: bool
-        Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
-    """
-    verbose = False
-    if verbose:
-        print(f"Starting linear_equation_solve calculation...")
-
-    # x = lu_solve((lu, piv), rhs, overwrite_b=overwriterhs)
-
-    if verbose:
-        print("Die Lösung x_delta lautet:")
-        print(x)
-
-    return # x
-

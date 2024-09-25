@@ -1,14 +1,10 @@
-import os
 from typing import Optional, Tuple, Union
 import time
 import numpy as np
 import scipy as sp
-import pandas as pd
 import scipy.sparse as spa
-import sksparse as skit
 import methods as mt
-from scipy.optimize._linprog_util import (_presolve, _postsolve, _LPProblem, _autoscale, _unscale, _clean_inputs, _get_Abc)
-from memory_profiler import profile
+from scipy.optimize._linprog_util import (_presolve, _LPProblem, _autoscale, _unscale, _clean_inputs)
 
 def burke_xu_lp(
     c: np.ndarray = None,
@@ -22,7 +18,6 @@ def burke_xu_lp(
     regularizer: Optional[float] = None,
     presolve: Optional[Tuple[bool, bool, str]] = (False, False, "some_string"),
     scaling: Optional[int] = 0,
-    initvals: Optional[np.ndarray] = None,
     sigma: Optional[float] = None,
     alpha_1: Optional[float] = None,
     alpha_2: Optional[float] = None,
@@ -45,7 +40,7 @@ def burke_xu_lp(
         lb =< x =< ub
 
 
-        Parameters
+        Parameter
         ----------
         c :
             Vektor in |R^n.
@@ -69,13 +64,21 @@ def burke_xu_lp(
                     Obere Schranke für Box-Restriktionen in |R^n. Kann auch ``None`` sein, in dem Fall wird ``np.inf`` als obere Schranke verwendet und x ist in diesem Index unbeschränkt nach oben.
                     Wird ub nicht angegeben, wird ``np.inf`` als obere Schranke verwendet.
         maxiter :
-            Maximum Anzahl an Iterationen.
+            Maximale Anzahl an Iterationen.
         acc :
             Gewünschte Genauigkeit.
+        regularizer :
+            Vorgegebener Vorfaktor der auf das Gleichungssystem addierten Einheitsmatrix. Standardmäßig wird reguralizer = acc^2 verwendet.
+        presolve:
+            Einstellungen für _presolve von scipy.
         scaling :
             Integer, der aussagt welche Skalierungsmethode verwendet werden soll.
-        initvals :
-            Kandidat für einen Startvektor x^0 in |R^n um einen Warmstart durchzuführen.
+        sigma :
+            Externer Parameter, standardmäßig wird sigma = 0.5 verwendet.
+        alpha_1 :
+            Externer Parameter, standardmäßig wird alpha_1 = 0.9 verwendet.
+        alpha_2 :
+            Externer Parameter, standardmäßig wird alpha_2 = 0.8 verwendet.
         verbose :
             Boolean Variable um eine Ausgabe sämtlicher Zwischenergebnisse zu erzeugen.
     """
@@ -104,7 +107,6 @@ def burke_xu_lp(
 
 
     """ Lineares Programm auf Normalform bringen (mit eigener Methode) """
-
     A, b, c, transformations, initial_length, use_sparse = mt.lp_to_standardform(c=c, A_eq=A_eq, b_eq=b_eq, A_ineq=A_ineq, b_ineq=b_ineq, bounds=bounds, verbose=verbose)
 
 
@@ -121,31 +123,23 @@ def burke_xu_lp(
     """ Initialisierung des Algorithmus """
     if regularizer is None:
         regularizer = acc*acc
-    problem = 1
 
     # Startwerte der Iterationsvariablen
     if use_sparse is False:
-        pass
+        chol, low = sp.linalg.cho_factor(A.dot(A.T))
+        x = sp.linalg.cho_solve((chol, low), b)
+        x = A.T.dot(x)
+        l = sp.linalg.cho_solve((chol, low), A.dot(c))
+        s = c - A.T.dot(l)
     elif use_sparse is True:
         factor = mt.cholesky_decomposition_lhs(A=A, use_sparse=use_sparse, regularizer=regularizer, verbose=verbose)
         x = factor(b)
         x = A.T.dot(x)
         l = factor(A.dot(c))
         s = c - A.T.dot(l)
-    # l = np.zeros(A.shape[0])
-    # s = c
 
-
-    # beta und mu bestimmen
-    # mu = np.sqrt(max(acc,(np.max(x * s))))
     mu = np.sqrt(acc + np.max(np.where((x > 0) & (s > 0), x * s, 0)))
-    # mu = np.max(np.abs(mt.big_phi(x, s, 0, verbose)))
-    # if mu < np.sqrt(np.max(np.maximum(0, x * s))):
-    #     mu = np.sqrt(np.max(np.maximum(0, x * s))) + acc
     beta = np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose)) / mu
-    # if beta <= 2 * np.sqrt(len(x)):
-    #     beta = 2 * np.sqrt(len(x)) + acc
-
 
     # Externe Variablen
     if sigma is None:
@@ -190,63 +184,76 @@ def burke_xu_lp(
             maxiter = k
             break
 
-        # Ausgabe der aktuellen Iterationsvariablen
-        print(f"-----------------------------------------------------------")
-        print(f"x^{k} = {x}")
-        print(f"lambda^{k} = {l}")
-        print(f"s^{k} = {s}")
-        print(f"mu_{k} = {mu}")
-        print(f"-----------------------------------------------------------")
+        # Ausgabe der aktuellen Iterationsvariablen bei Verbose
+        if verbose:
+            print(f"-----------------------------------------------------------")
+            print(f"x^{k} = {x}")
+            print(f"lambda^{k} = {l}")
+            print(f"s^{k} = {s}")
+            print(f"mu_{k} = {mu}")
+            print(f"-----------------------------------------------------------")
 
-        # Prädiktor-Schritt
-        D_x_inv = np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))
-        D_s = np.diag(mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose))
+
+        """ Prädiktor-Schritt """
+
+        # Berechnung der mehrfach verwendeten Diagonalmatrizen und Vektoren. Die Diagonalmatrizen werden als Vektoren gespeichert, damit Speicher gespart und später eine komponentenweise
+        # Multiplikation, statt einer Matrix-Vektor-Multiplikaton durchgeführt wird.
+        D_x_inv = mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose)
+        D_s = mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose)
         r_3 = mt.big_phi(x, s, mu, verbose) - (mu * mt.nabla_big_phi(x, s, mu, 3, verbose))
-        rhs = A.dot(D_x_inv.dot(r_3))
+        rhs = A.dot(D_x_inv * r_3)
+        # Lösung der Gleichungssysteme. Effizient implementiert nur für dünn besetzte Matrizen, use_sparse = False wurde nur zu Testzwecken implementiert.
         if use_sparse is False:
-            pass
+            chol, low = sp.linalg.cho_factor(A.dot(np.diag(D_x_inv).dot(np.diag(D_s))).dot(A.T))
+            delta_l = sp.linalg.cho_solve((chol, low), rhs)
         else:
             factor = mt.cholesky_decomposition_lhs(x, s, mu, A, use_sparse, factor, regularizer=regularizer, verbose=verbose)
             delta_l = factor(rhs)
         delta_s = -A.T.dot(delta_l)
-        delta_x = -D_x_inv.dot(D_s.dot(delta_s) + r_3)
+        delta_x = - D_x_inv * (D_s * delta_s + r_3)
         if verbose:
             print(f"im Prädiktorschritt hat delta_x den Wert")
-            print(f"{pd.DataFrame(delta_x)}")
+            print(f"{delta_x}")
             print(f"big_phi hat die Werte = {mt.big_phi(x + delta_x, s + delta_s, mu, verbose=verbose)}")
         x, s, l, mu, step = mt.predictor_step(x, s, l, delta_x, delta_s, delta_l, mu, alpha_1, beta, acc, verbose=verbose)
 
-        # Korrektor-Schritt
+
+        """ Korrektor-Schritt """
         if step == 0:
-            print("Nullstep has been taken.")
+            # Wiederverwendung obiger Berechnungen bei Nullstep
+            if verbose:
+                print("Nullstep has been taken.")
             nullstep += 1
             r_3 = mt.big_phi(x, s, mu, verbose) - (mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose))
-            rhs = A.dot(D_x_inv.dot(r_3))
+            rhs = A.dot(D_x_inv * r_3)
             if use_sparse is False:
-                pass
+                delta_l = sp.linalg.cho_solve((chol, low), rhs)
             else:
                 delta_l = factor(rhs)
             delta_s = -A.T.dot(delta_l)
-            delta_x = -D_x_inv.dot(D_s.dot(delta_s) + r_3)
+            delta_x = -D_x_inv * (D_s * delta_s + r_3)
             if verbose:
                 print(f"im Nullstepkorrektorschritt hat delta_x den Wert")
-                print(f"{pd.DataFrame(delta_x)}")
+                print(f"{delta_x}")
                 print(f"big_phi hat die Werte = {mt.big_phi(x + delta_x, s + delta_s, mu, verbose=verbose)}")
         elif step == 1:
+            # Aktueller Vektor löst das LP
             maxiter = k + 1
             break
         elif step == 2:
-            D_x_inv = np.diag(mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose))
-            D_s = np.diag(mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose))
+            # Normaler Korrektor-Schritt, ähnlich implementiert wie beim Prädiktor-Schritt
+            D_x_inv = mt.nabla_big_phi(x, s, mu, 1, inv=True, verbose=verbose)
+            D_s = mt.nabla_big_phi(x, s, mu, 2, False, verbose=verbose)
             r_3 = mt.big_phi(x, s, mu, verbose) - (mu * sigma * mt.nabla_big_phi(x, s, mu, 3, verbose))
-            rhs = A.dot(D_x_inv.dot(r_3))
+            rhs = A.dot(D_x_inv * r_3)
             if use_sparse is False:
-                pass
+                chol, low = sp.linalg.cho_factor(A.dot(np.diag(D_x_inv).dot(np.diag(D_s))).dot(A.T))
+                delta_l = sp.linalg.cho_solve((chol, low), rhs)
             else:
                 factor = mt.cholesky_decomposition_lhs(x, s, mu, A, use_sparse, factor, regularizer=regularizer, verbose=verbose)
                 delta_l = factor(rhs)
             delta_s = -A.T.dot(delta_l)
-            delta_x = -D_x_inv.dot(D_s.dot(delta_s) + r_3)
+            delta_x = -D_x_inv * (D_s * delta_s + r_3)
             if verbose:
                 print(A.T.dot(delta_l) + delta_s)
                 print(A.dot(delta_x))
@@ -257,16 +264,15 @@ def burke_xu_lp(
 
     """ Ausgabe des Ergebnisses """
 
-    print(f"-----------------------------------------------------------")
-    print(f"x^{k} = {x}")
-    print(f"lambda^{k} = {l}")
-    print(f"s^{k} = {s}")
-    print(f"mu_{k} = {mu}")
-    print(f"-----------------------------------------------------------")
+    if verbose:
+        print(f"-----------------------------------------------------------")
+        print(f"x^{k} = {x}")
+        print(f"lambda^{k} = {l}")
+        print(f"s^{k} = {s}")
+        print(f"mu_{k} = {mu}")
+        print(f"-----------------------------------------------------------")
 
     end_time = time.time()
-
-
 
     if verbose:
         print(A.toarray())
@@ -276,6 +282,7 @@ def burke_xu_lp(
         print(f"Es wurden dafür {maxiter} Schritte durchgeführt. Es wurden {end_time - start_time} Sekunden benötigt.")
 
     phi = np.linalg.norm(mt.big_phi(x, s, mu, verbose=verbose), ord=np.inf)
+
 
     """ Überprüfung und Rücktransformation des Ergebnisses """
 
