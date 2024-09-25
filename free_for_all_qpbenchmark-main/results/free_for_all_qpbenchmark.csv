@@ -1,2 +1,0 @@
-problem,solver,settings,runtime,found,primal_residual,dual_residual,duality_gap
-CONT-050,proxqp,default,1.671282839000014,True,2.887038745846837e-07,1.1100035832980679e-08,3.8341851993028975e-05

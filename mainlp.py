@@ -19,13 +19,14 @@ alpha_1 = 0.75
 alpha_2 = 0.8
 scaling = 0
 presolve = (True, True, None)
+data_path = "data/"
 
 
 if loop == 1:
 
 # CSV-Datei einlesen
     netlib_fun = {}
-    with open('free_for_all_qpbenchmark-main/data/NetlibFun.csv', 'r') as csvfile:
+    with open(os.path.join(data_path, 'NetlibFun.csv'), 'r') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
             filename = row['npz_file']
@@ -33,7 +34,6 @@ if loop == 1:
             cols = int(row['Cols'])
             nonzeros = int(row['Nonzeros'])
             optimal_value = float(row['NetlibFun'])
-
             netlib_fun[filename] = {
                 'Rows': rows,
                 'Cols': cols,
@@ -42,9 +42,8 @@ if loop == 1:
             }
 
     # Pfad zu den .npz-Dateien
-    data_path = "free_for_all_qpbenchmark-main/data"
-    output_file = os.path.join(data_path, "testergebnisse.txt")
-    latex_output = os.path.join(data_path, "latexergebnisse.txt")
+    output_file = "testergebnisse.txt"
+    latex_output = "latexergebnisse.txt"
 
     # Alle .npz-Dateien im Verzeichnis durchlaufen
     npz_files = sorted([f for f in os.listdir(data_path) if f.endswith('.npz')])
@@ -60,7 +59,7 @@ if loop == 1:
         file.write(f"scaling = {scaling}\n")
         file.write("\n")
         file.write(f"{'Datei':<12}{'Rows':<10}{'Columns':<10}{'Nonzeros':<10}{'NetlibFun':<15}{'Fun':<15}{'mu':<10}{'phi':<10}{'Pred':<6}{'Iter':<6}{'Time(s)':<10}{'Status':<10}\n")
-        file.write("="*180 + "\n")
+        file.write("="*120 + "\n")
 
     count = 0
     for npz_file in npz_files:
